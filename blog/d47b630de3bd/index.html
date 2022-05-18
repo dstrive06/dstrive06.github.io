@@ -1,0 +1,748 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><title>第三章-垃圾收集器与内存分配策略 | dstrive</title><meta name="keywords" content="jvm gc"><meta name="author" content="dstrive"><meta name="copyright" content="dstrive"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="指令关于是否要对类型进行回收，HotSpot虚拟机提供了 -Xnoclassgc参数进行控制，还可以使用 -verbose：class以及 -XX：+TraceClassLoading、 -XX： +TraceClassUnLoading查看类加载和卸载信息 -XX：+UseCondCardMark，用来决定是否开启卡表更新的条件判断。开启会增加一次额外判断的开销，但能够避免伪共享问题，两者各有性">
+<meta property="og:type" content="article">
+<meta property="og:title" content="第三章-垃圾收集器与内存分配策略">
+<meta property="og:url" content="https://dstrive06.github.io/blog/d47b630de3bd/index.html">
+<meta property="og:site_name" content="dstrive">
+<meta property="og:description" content="指令关于是否要对类型进行回收，HotSpot虚拟机提供了 -Xnoclassgc参数进行控制，还可以使用 -verbose：class以及 -XX：+TraceClassLoading、 -XX： +TraceClassUnLoading查看类加载和卸载信息 -XX：+UseCondCardMark，用来决定是否开启卡表更新的条件判断。开启会增加一次额外判断的开销，但能够避免伪共享问题，两者各有性">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://backiee.com/static/wpdb/wallpapers/v2/1000x563/327503.jpg">
+<meta property="article:published_time" content="2022-04-05T23:30:32.000Z">
+<meta property="article:modified_time" content="2022-04-07T23:14:23.948Z">
+<meta property="article:author" content="dstrive">
+<meta property="article:tag" content="blog">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://backiee.com/static/wpdb/wallpapers/v2/1000x563/327503.jpg"><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="https://dstrive06.github.io/blog/d47b630de3bd/"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css" media="print" onload="this.media='all'"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.css" media="print" onload="this.media='all'"><script>const GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: undefined,
+  localSearch: undefined,
+  translate: undefined,
+  noticeOutdate: undefined,
+  highlight: {"plugin":"highlighjs","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false},
+  copy: {
+    success: '复制成功',
+    error: '复制错误',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: true,
+    post: true
+  },
+  runtime: '天',
+  date_suffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"limitCount":50,"languages":{"author":"作者: dstrive","link":"链接: ","source":"来源: dstrive","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。"}},
+  lightbox: 'fancybox',
+  Snackbar: undefined,
+  source: {
+    justifiedGallery: {
+      js: 'https://cdn.jsdelivr.net/npm/flickr-justified-gallery@2/dist/fjGallery.min.js',
+      css: 'https://cdn.jsdelivr.net/npm/flickr-justified-gallery@2/dist/fjGallery.min.css'
+    }
+  },
+  isPhotoFigcaption: false,
+  islazyload: false,
+  isAnchor: true
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '第三章-垃圾收集器与内存分配策略',
+  isPost: true,
+  isHome: false,
+  isHighlightShrink: true,
+  isToc: true,
+  postUpdate: '2022-04-08 07:14:23'
+}</script><noscript><style type="text/css">
+  #nav {
+    opacity: 1
+  }
+  .justified-gallery img {
+    opacity: 1
+  }
+
+  #recent-posts time,
+  #post-meta time {
+    display: inline !important
+  }
+</style></noscript><script>(win=>{
+    win.saveToLocal = {
+      set: function setWithExpiry(key, value, ttl) {
+        if (ttl === 0) return
+        const now = new Date()
+        const expiryDay = ttl * 86400000
+        const item = {
+          value: value,
+          expiry: now.getTime() + expiryDay,
+        }
+        localStorage.setItem(key, JSON.stringify(item))
+      },
+
+      get: function getWithExpiry(key) {
+        const itemStr = localStorage.getItem(key)
+
+        if (!itemStr) {
+          return undefined
+        }
+        const item = JSON.parse(itemStr)
+        const now = new Date()
+
+        if (now.getTime() > item.expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return item.value
+      }
+    }
+  
+    win.getScript = url => new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = url
+      script.async = true
+      script.onerror = reject
+      script.onload = script.onreadystatechange = function() {
+        const loadState = this.readyState
+        if (loadState && loadState !== 'loaded' && loadState !== 'complete') return
+        script.onload = script.onreadystatechange = null
+        resolve()
+      }
+      document.head.appendChild(script)
+    })
+  
+      win.activateDarkMode = function () {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      win.activateLightMode = function () {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+      const t = saveToLocal.get('theme')
+    
+          if (t === 'dark') activateDarkMode()
+          else if (t === 'light') activateLightMode()
+        
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        if (asideStatus === 'hide') {
+          document.documentElement.classList.add('hide-aside')
+        } else {
+          document.documentElement.classList.remove('hide-aside')
+        }
+      }
+    
+    const detectApple = () => {
+      if(/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)){
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+    })(window)</script><meta name="generator" content="Hexo 5.4.1"></head><body><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img is-center"><img src="https://backiee.com/static/wpdb/wallpapers/v2/1000x563/324912.jpg" onerror="onerror=null;src='/img/friend_404.gif'" alt="avatar"/></div><div class="sidebar-site-data site-data is-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">12</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">2</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">14</div></a></div><hr/><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> Home</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> Archives</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> Tags</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> Categories</span></a></div><div class="menus_item"><a class="site-page group" href="javascript:void(0);"><i class="fa-fw fas fa-list"></i><span> List</span><i class="fas fa-chevron-down"></i></a><ul class="menus_item_child"><li><a class="site-page child" href="/music/"><i class="fa-fw fas fa-music"></i><span> Music</span></a></li><li><a class="site-page child" href="/movies/"><i class="fa-fw fas fa-video"></i><span> Movie</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fas fa-link"></i><span> Link</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> About</span></a></div></div></div></div><div class="post" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url('https://backiee.com/static/wpdb/wallpapers/v2/1000x563/327439.jpg')"><nav id="nav"><span id="blog_name"><a id="site-name" href="/">dstrive</a></span><div id="menus"><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> Home</span></a></div><div class="menus_item"><a class="site-page" href="/archives/"><i class="fa-fw fas fa-archive"></i><span> Archives</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> Tags</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> Categories</span></a></div><div class="menus_item"><a class="site-page group" href="javascript:void(0);"><i class="fa-fw fas fa-list"></i><span> List</span><i class="fas fa-chevron-down"></i></a><ul class="menus_item_child"><li><a class="site-page child" href="/music/"><i class="fa-fw fas fa-music"></i><span> Music</span></a></li><li><a class="site-page child" href="/movies/"><i class="fa-fw fas fa-video"></i><span> Movie</span></a></li></ul></div><div class="menus_item"><a class="site-page" href="/link/"><i class="fa-fw fas fa-link"></i><span> Link</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-heart"></i><span> About</span></a></div></div><div id="toggle-menu"><a class="site-page"><i class="fas fa-bars fa-fw"></i></a></div></div></nav><div id="post-info"><h1 class="post-title">第三章-垃圾收集器与内存分配策略</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2022-04-05T23:30:32.000Z" title="发表于 2022-04-06 07:30:32">2022-04-06</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2022-04-07T23:14:23.948Z" title="更新于 2022-04-08 07:14:23">2022-04-08</time></span><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/">读书笔记</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3Java%E8%99%9A%E6%8B%9F%E6%9C%BA%E3%80%8B/">《深入理解Java虚拟机》</a><i class="fas fa-angle-right post-meta-separator"></i><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E8%AF%BB%E4%B9%A6%E7%AC%94%E8%AE%B0/%E3%80%8A%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3Java%E8%99%9A%E6%8B%9F%E6%9C%BA%E3%80%8B/%E7%AC%AC%E4%B8%89%E7%AB%A0/">第三章</a></span></div><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title="第三章-垃圾收集器与内存分配策略"><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">阅读量:</span><span id="busuanzi_value_page_pv"></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="post-content" id="article-container"><h1 id=""><a href="#" class="headerlink" title=""></a></h1><h2 id="指令"><a href="#指令" class="headerlink" title="指令"></a>指令</h2><p>关于是否要对类型进行回收，HotSpot虚拟机提供了</p>
+<p>-Xnoclassgc参数进行控制，还可以使用</p>
+<p>-verbose：class以及</p>
+<p>-XX：+TraceClassLoading、</p>
+<p>-XX： +TraceClassUnLoading查看类加载和卸载信息</p>
+<p>-XX：+UseCondCardMark，<strong>用来决定是否开启卡表更新的条件判断</strong>。开启会增加一次额外判断的开销，但能够避免伪共享问题，两者各有性能损耗，是否打开要根据应用实际运行情况来进行测试权衡。</p>
+<p>-XX：+PrintGCDetails 收集器日志参数</p>
+<p>-Xms20M、-Xmx20M、-Xmn10M这三个参数限制了Java堆大小为20MB，不可扩展，其中10MB分配给新生代，剩下的10MB分配给老年代。</p>
+<p>-XX：Survivor-Ratio=8决定了新生代中Eden区与一个Survivor区的空间比例是8∶1</p>
+<p>-XX：PretenureSizeThreshold 参数，指定大于该设置值的对象直接在老年代分配，只对Serial和ParNew两款新生代收集器有效，HotSpot 的其他新生代收集器，如Parallel Scavenge并不支持这个参数。</p>
+<p>XX：HandlePromotionFailure参数的设置值是否允许担保失败（Handle Promotion Failure）；</p>
+<hr>
+<h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><p><strong>程序计数器、虚拟机栈、本地方法栈</strong>3个区域随线程而生，随线程而灭，栈中的栈帧随着方法的进入和退出而有条不紊地执行着出栈和入栈操作。<strong>每一个栈帧中分配多少内存基本上是在类结构确定下来时就已知的</strong>。</p>
+<p>而<strong>Java堆</strong>和<strong>方法区</strong>这两个区域则有着很显著的不确定性：一个接口的多个实现类需要的内存可能会不一样，一个方法所执行的不同条件分支所需要的内存也可能不一样，只有处于运行期间，我们才能知道程序究竟会创建哪些对象，创建多少个对象，这部分内存的分配和回收是动态的。</p>
+<h2 id="对象已死？"><a href="#对象已死？" class="headerlink" title="对象已死？"></a>对象已死？</h2><p><strong>在堆里面存放着Java世界中几乎所有的对象实例，垃圾收集器在对堆进行回收前，第一件事情就 是要确定这些对象之中哪些还“存活”着，哪些已经“死去”</strong></p>
+<h3 id="引用技术算法"><a href="#引用技术算法" class="headerlink" title="引用技术算法"></a>引用技术算法</h3><p>在对象中添加一个引用计数器，当一个对象被引用时，这个计数器就加一，相反，引用失效时就减一，直到计数器的值为零时则表明此对象就是不可被使用的。</p>
+<p>java没有采用引用技术算法来管理内存。</p>
+<p>存在的问题：无法解决循环互相引用问题。</p>
+<p>比如：</p>
+<p>ObjectA.instance=ObjectB;</p>
+<p>ObjectB.instance=ObjectA;</p>
+<p>这两个对象再无任何引用，实际上这两个对象已 </p>
+<p>经不可能再被访问，但是它们因为互相引用着对方，导致它们的引用计数都不为零，引用计数算法也就无法回收它们。 </p>
+<h3 id="可达性分析算法"><a href="#可达性分析算法" class="headerlink" title="可达性分析算法"></a>可达性分析算法</h3><p>这个算法的基本思路就是通过 一系列称为<strong>“GC Roots”的根对象</strong>作为起始节点集，从这些节点开始，根据引用关系向下搜索，搜索过 程所走过的路径称为<strong>“引用链”（Reference Chain）</strong>，如果某个对象到GC Roots间没有任何引用链相连， 或者用图论的话来说就是从GC Roots到这个对象不可达时，则证明此对象是不可能再被使用的。 </p>
+<img src="/2022/04/06/d47b630de3bd/gc-roots.png" class="" title="利用可达性分析算法判定对象是否可回收">
+<!-- ![image-20210725173221006](第3章 垃圾收集器与内存分配策略.assets/image-20210725173221006.png) -->
+
+<p>在Java技术体系里面，固定可作为GC Roots的对象包括以下几种： </p>
+<ul>
+<li>在虚拟机栈（栈帧中的本地变量表）中引用的对象，譬如各个线程被调用的方法堆栈中使用到的 </li>
+</ul>
+<p>参数、局部变量、临时变量等。 –&gt;<strong>方法中的参数、局部变量、临时变量</strong>。</p>
+<ul>
+<li><p>在方法区中类静态属性引用的对象，譬如Java类的引用类型静态变量。  –&gt; <strong>static 修饰的引用变量</strong></p>
+</li>
+<li><p>在方法区中常量引用的对象，譬如字符串常量池（String Table）里的引用。 –&gt; <strong>static final 修饰的引用变量</strong></p>
+</li>
+<li><p>在本地方法栈中JNI（即通常所说的Native方法）引用的对象。  –&gt; <strong>native 修饰的本地方法的引用对象</strong></p>
+</li>
+<li><p>Java虚拟机内部的引用，如基本数据类型对应的Class对象，一些常驻的异常对象（比如 NullPointExcepiton、OutOfMemoryError）等，还有系统类加载器。  –&gt; <strong>系统内置的对象</strong></p>
+</li>
+<li><p>所有被同步锁（synchronized关键字）持有的对象。  </p>
+</li>
+<li><p>反映Java虚拟机内部情况的JMXBean、JVMTI中注册的回调、本地代码缓存等。 </p>
+</li>
+</ul>
+<h3 id="再谈引用"><a href="#再谈引用" class="headerlink" title="再谈引用"></a>再谈引用</h3><p>在JDK 1.2版之后，Java对引用的概念进行了扩充，将引用分为</p>
+<ul>
+<li><strong>强引用（Strongly Reference）</strong>、</li>
+<li><strong>软引用（Soft Reference）</strong>、</li>
+<li><strong>弱引用（Weak Reference）</strong>和</li>
+<li><strong>虚引用（Phantom Reference）</strong>4种，<strong>这4种引用强度依次逐渐减弱</strong>。 </li>
+</ul>
+<h4 id="强引用"><a href="#强引用" class="headerlink" title="强引用"></a>强引用</h4><p>Object obj = new Object; 类似这样，只要引用还在，则对象就不会被GC。</p>
+<h4 id="软引用"><a href="#软引用" class="headerlink" title="软引用"></a>软引用</h4><p>内存足够时，不会被GC</p>
+<p>内存不够（OOM）时，会被GC</p>
+<h4 id="弱引用"><a href="#弱引用" class="headerlink" title="弱引用"></a>弱引用</h4><p>GC时一定 被回收</p>
+<h4 id="虚引用"><a href="#虚引用" class="headerlink" title="虚引用"></a>虚引用</h4><p><strong>虚引用也称为“幽灵引用”或者“幻影引用”，它是最弱的一种引用关系。一个对象是否有虚引用的 存在，完全不会对其生存时间构成影响，也无法通过虚引用来取得一个对象实例。为一个对象设置虚 引用关联的唯一目的只是为了能在这个对象被收集器回收时收到一个系统通知。在JDK 1.2版之后提供 了<code>PhantomReference</code>类来实现虚引用。</strong></p>
+<h3 id="生存还是死亡？"><a href="#生存还是死亡？" class="headerlink" title="生存还是死亡？"></a>生存还是死亡？</h3><p>对象由两次机会判断是否“死亡”；</p>
+<ul>
+<li><p>第一次(<strong>“缓刑”</strong>阶段)：如果对象在进行<strong>可达性分析</strong>后发现没有与<strong>GC Roots</strong>相连接的引用链，那它将会被<strong>第一次标记</strong>，随后进行一次筛选，筛选的条件是此对象是否有必要执行<strong>finalize()<strong>方法。假如</strong>==①.== <strong>对象没有覆盖finalize()方法，或者</strong>==②.==</strong> finalize()方法已经被虚拟机调用过，那么虚拟机将这两种情况都视为“没有必要执行”。 </p>
+</li>
+<li><p>第二次：如果这个对象被判定为确<strong>有必要执行finalize()方法</strong>，那么该对象将会被放置在一个名为<strong>F-Queue的 队列</strong>之中，并在稍后由一条由虚拟机自动建立的、<strong>低调度优先级的Finalizer线程</strong>去执行它们的<strong>finalize() 方法</strong>。这里所说的“执行”是指虚拟机会触发这个方法开始运行，但<strong>并不承诺一定会等待它运行结束</strong>。 这样做的原因是，如果某个对象的finalize()方法执行缓慢，或者更极端地发生了死循环，将很可能导 致F-Queue队列中的其他对象永久处于等待，甚至导致整个内存回收子系统的崩溃。finalize()方法是对 象逃脱死亡命运的最后一次机会，稍后收集器将对F-Queue中的对象进行第二次小规模的标记，<strong>如果对象要在finalize()中成功拯救自己——只要重新与引用链上的任何一个对象建立关联即可，譬如把自己 （this关键字）赋值给某个类变量或者对象的成员变量，那在第二次标记时它将被移出“即将回收”的集 合；</strong>如果对象这时候还没有逃脱，那基本上它就真的要被回收了。</p>
+</li>
+</ul>
+<p>例如：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">FinalizeEscapeGC</span> &#123;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="type">FinalizeEscapeGC</span> <span class="variable">SAVE_HOOK</span> <span class="operator">=</span> <span class="literal">null</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">isAlive</span><span class="params">()</span> &#123;</span><br><span class="line">        System.out.println(<span class="string">&quot;yes, i am still alive :)&quot;</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="meta">@Override</span></span><br><span class="line">    <span class="keyword">protected</span> <span class="keyword">void</span> <span class="title function_">finalize</span><span class="params">()</span> <span class="keyword">throws</span> Throwable &#123;</span><br><span class="line">        <span class="built_in">super</span>.finalize();</span><br><span class="line">        System.out.println(<span class="string">&quot;finalize method executed!&quot;</span>);</span><br><span class="line">        FinalizeEscapeGC.SAVE_HOOK = <span class="built_in">this</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> Throwable &#123;</span><br><span class="line">        SAVE_HOOK = <span class="keyword">new</span> <span class="title class_">FinalizeEscapeGC</span>();</span><br><span class="line">        <span class="comment">//对象第一次成功拯救自己</span></span><br><span class="line">        SAVE_HOOK = <span class="literal">null</span>;</span><br><span class="line">        System.gc(); </span><br><span class="line">        <span class="comment">// 因为Finalizer方法优先级很低，暂停0.5秒，以等待它</span></span><br><span class="line">        Thread.sleep(<span class="number">500</span>);</span><br><span class="line">        <span class="keyword">if</span> (SAVE_HOOK != <span class="literal">null</span>) &#123;</span><br><span class="line">            SAVE_HOOK.isAlive();</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            System.out.println(<span class="string">&quot;no, i am dead :(&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 下面这段代码与上面的完全相同，但是这次自救却失败了</span></span><br><span class="line">        SAVE_HOOK = <span class="literal">null</span>;</span><br><span class="line">        System.gc(); </span><br><span class="line">        <span class="comment">// 因为Finalizer方法优先级很低，暂停0.5秒，以等待它</span></span><br><span class="line">        Thread.sleep(<span class="number">500</span>);</span><br><span class="line">        <span class="keyword">if</span> (SAVE_HOOK != <span class="literal">null</span>) &#123;</span><br><span class="line">            SAVE_HOOK.isAlive();</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            System.out.println(<span class="string">&quot;no, i am dead :(&quot;</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">----</span><br><span class="line">运行结果：</span><br><span class="line">    finalize method executed!</span><br><span class="line">    yes, i am still alive :)</span><br><span class="line">    no, i am dead :(</span><br></pre></td></tr></table></figure>
+
+<p>另外一个值得注意的地方就是，代码中有两段完全一样的代码片段，执行结果却是一次逃脱成 功，一次失败了。这是因为<strong>任何一个对象的finalize()方法都只会被系统自动调用一次</strong>，如果对象面临下一次回收，它的finalize()方法不会被再次执行，因此第二段代码的自救行动失败了。 </p>
+<p><strong>finalize()方法的运行代价高昂，不确定性大，无法保证各个对象的调用顺序，如今已被官方明确声明为 不推荐使用的语法。</strong></p>
+<h3 id="回收方法区"><a href="#回收方法区" class="headerlink" title="回收方法区"></a>回收方法区</h3><p>方法区的垃圾收集主要回收两部分内容：<strong>废弃的常量</strong>和<strong>不再使用的类型</strong>。</p>
+<p>回收废弃的常量：没有任何地方使用此常量。</p>
+<p>回收类型：</p>
+<ul>
+<li>该类型所有的实例已被回收；</li>
+<li>该类型的类加载器被回收；</li>
+<li>该类对应的<strong>java.lang.Class对象</strong>没有在任何地方被引用，无法在任何地方通过反射访问该类的方 法。</li>
+</ul>
+<blockquote>
+<p> 在<strong>大量使用反射、动态代理、CGLib等字节码框架，动态生成JSP以及OSGi这类频繁自定义类加载 器的场景中，通常都需要Java虚拟机具备类型卸载的能力</strong>，以保证不会对方法区造成过大的内存压 力。</p>
+</blockquote>
+<h2 id="垃圾回收算法"><a href="#垃圾回收算法" class="headerlink" title="垃圾回收算法"></a>垃圾回收算法</h2><p>垃圾收集算法可以划分为</p>
+<ul>
+<li><p><strong>“引用计数式垃圾收集”（Reference Counting GC）</strong>也称作<strong>“直接垃圾收集”</strong></p>
+</li>
+<li><p><strong>“追踪式垃圾收集”（Tracing GC）</strong>也称作<strong>“间接垃圾收集”</strong></p>
+</li>
+</ul>
+<h3 id="分代收集理论"><a href="#分代收集理论" class="headerlink" title="分代收集理论"></a>分代收集理论</h3><p>建立在两个分代假说之上： </p>
+<ul>
+<li><p><strong>==①== 弱分代假说（Weak Generational Hypothesis）</strong>：<strong>绝大多数对象都是朝生夕灭的</strong>。 </p>
+</li>
+<li><p><strong>==②== 强分代假说（Strong Generational Hypothesis）</strong>：<strong>熬过越多次垃圾收集过程的对象就越难以消 亡</strong>。</p>
+</li>
+</ul>
+<p>这两个分代假说共同奠定了多款常用的垃圾收集器的一致的设计原则：<strong>收集器应该将Java堆划分出不同的区域，然后将回收对象依据其年龄（年龄即对象熬过垃圾收集过程的次数）分配到不同的区域之中存储。</strong></p>
+<p>显而易见，</p>
+<ul>
+<li>如果一个区域中大多数对象都是<strong>朝生夕灭</strong>，难以熬过垃圾收集过程的话，那 么把它们集中放在一起，每次回收时只关注如何保留少量存活而不是去标记那些大量将要被回收的对象，就能以较低代价回收到大量的空间；（<strong>新生代</strong>）</li>
+<li>如果剩下的都是<strong>难以消亡</strong>的对象，那把它们集中放在一块， 虚拟机便可以使用较低的频率来回收这个区域，这就同时兼顾了垃圾收集的时间开销和内存的空间有效利用。（<strong>老年代</strong>）</li>
+</ul>
+<p>针对不同的区域安 排与里面存储对象存亡特征相匹配的垃圾收集算法——因而发展出了<strong>“标记-复制算法”、“标记-清除算</strong> </p>
+<p><strong>法”、“标记-整理算法”</strong>等针对性的垃圾收集算法。</p>
+<h4 id="问题："><a href="#问题：" class="headerlink" title="问题："></a>问题：</h4><p>分代收集理论存在一个明显的困难：<strong>对象不是孤立的，对象之间会存在跨代引用。</strong></p>
+<h4 id="解决方案："><a href="#解决方案：" class="headerlink" title="解决方案："></a>解决方案：</h4><p>第三条经验法则：</p>
+<ul>
+<li><strong>==③==跨代引用假说（Intergenerational Reference Hypothesis）：跨代引用相对于同代引用来说仅占极少数</strong></li>
+</ul>
+<p><strong>这其实是可根据前两条假说逻辑推理得出的隐含推论：存在互相引用关系的两个对象，是应该倾向于同时生存或者同时消亡的。</strong></p>
+<p><strong>在新生代上建立一个全局的数据结构</strong>（该结构被称 为<strong>“记忆集”，Remembered Set</strong>），<strong>这个结构把老年代划分成若干小块，标识出老年代的哪一块内存会 存在跨代引用</strong>。此后当发生<strong>Minor GC</strong>时，<strong>只有包含了跨代引用的小块内存里的对象才会被加入到GC Roots进行扫描</strong>。虽然这种方法需要在对象改变引用关系（如将自己或者某个属性赋值）时维护记录数据的正确性，会增加一些运行时的开销，但<strong>比起收集时扫描整个老年代来说仍然是划算</strong>的。 </p>
+<blockquote>
+<p>新生代（Young）、老年代（Old）是HotSpot虚拟机，也是现在业界主流的命名方式。在IBM J9虚 拟机中对应称为婴儿区（<strong>Nursery</strong>）和长存区（<strong>Tenured</strong>），名字不同但其含义是一样的。 </p>
+</blockquote>
+<h3 id="标记-清除算法"><a href="#标记-清除算法" class="headerlink" title="标记-清除算法"></a>标记-清除算法</h3><p><strong>最早出现也是最基础的垃圾收集算法</strong>，在1960年由Lisp之父 <strong>John McCarthy</strong>所提出，<strong>分为“标记”和“清除”两个阶段。</strong></p>
+<p><strong>首先标记出所有需要回收的对象，在标记完成后，统一回收掉所有被标记的对象，也可以反过来，标记存活的对象，统一回</strong> </p>
+<p><strong>收所有未被标记的对象。（标记过程就是对象是否属于垃圾的判定过程）</strong></p>
+<p>之所以说它是最基础的收集算法，是因为<strong>后续的收集算法大多都是以标记-清除算法为基础</strong>，对其缺点进行改进而得到的。</p>
+<p>主要缺点有两个：</p>
+<ol>
+<li><p>第一个是<strong>执行效率不稳定</strong>，如果Java堆中包含大量对象，而且其中大部分是需要被回收的，这时<strong>必须进行大量标记和清除的动作，导致标记和清除两个过程的执行效率都随对象数量增长而降低；</strong></p>
+</li>
+<li><p>第二个是<strong>内存空间的碎片化问题</strong>，标记、清除之后会产生大量不连续的内存碎片，空间碎片太多可能会导致当以后在程序运行过程中<strong>需要分配较大对象时无法找到足够的连续内存而不得不提前触发另一次垃圾收集动作</strong>。</p>
+</li>
+</ol>
+<img src="/2022/04/06/d47b630de3bd/mark-sweep.png" class="" title="标记-清除算法示意图">
+<!-- ![image-20210725184436750](第3章 垃圾收集器与内存分配策略.assets/image-20210725184436750.png) -->
+
+<p>通常标记-清除算法也是需要停顿用户线程来标记、清理可回收对象的，只是停顿时间相对而言要来的短而已。</p>
+<h3 id="标记-复制算法-（新生代使用）"><a href="#标记-复制算法-（新生代使用）" class="headerlink" title="标记-复制算法 （新生代使用）"></a>标记-复制算法 （新生代使用）</h3><p><strong>为了解决标记-清除算法面对大量可回收对象时执行效率低的问题</strong>，1969年<strong>Fenichel</strong>提出了一种称为<strong>“半区复制”（Semispace Copying）</strong>的垃圾收集算法，它将可用内存按容量划分为大小相等的两块，每次只使用其中的一块。当这一块的内存用完了，就将还存活着的对象复制到另外一块上面，然后再把已使用过的内存空间一次清理掉。如果内存中多数对象都是存活的，这种算法将会产生大量的内存间复制的开销，但对于多数对象都是可回收的情况，<strong>算法需要复制的就是占少数的存活对象，而且每次都是针对整个半区进行内存回收，分配内存时也就不用考虑有空间碎片的复杂情况，只要移动堆顶指针，按顺序分配即可</strong>。这样实现简单，运行高效，不过其缺陷也显而易见，这种复制回收算法的代价是将可用内存缩小为了原来的一半，空间浪费未免太多了一 点。</p>
+<img src="/2022/04/06/d47b630de3bd/mark-copy.png" class="" title="标记-复制算法示意图">
+<!-- ![image-20210725184947897](第3章 垃圾收集器与内存分配策略.assets/image-20210725184947897.png) -->
+
+<p><strong>现在的商用Java虚拟机大多都优先采用了这种收集算法去回收<u>新生代</u></strong></p>
+<p>在1989年，<strong>Andrew Appel</strong>针对具备<strong>“朝生夕灭”</strong>特点的对象，提出了一种*<em><strong>，现在称为</strong>“Appel式回收”</em>*。HotSpot虚拟机的<strong>Serial</strong>、<strong>ParNew</strong>等新生代收集器均采用了这种策略来设计新生代的内存布局。</p>
+<p><strong>Appel式回收</strong>的具体做法是把新生代分为<strong>一块较大的Eden空间</strong>和<strong>两块较小的 Survivor空间</strong>，<strong>每次分配内存只使用Eden和其中一块Survivor</strong>。发生垃圾搜集时，<strong>将Eden和Survivor中仍然存活的对象一次性复制到另外一块Survivor空间上，然后直接清理掉Eden和已用过的那块Survivor空间</strong>。HotSpot虚拟机默认Eden和Survivor的<strong>大小比例是8∶1</strong>，也即每次新生代中可用内存空间为整个新生代容量的90%（Eden的80%加上一个Survivor的10%），只有一个Survivor空间，即10%的新生代是会被“浪费”的。当然，98%的对象可被回收仅仅是“普通场景”下测得的数据，任何人都没有办法百分百 保证每次回收都只有不多于10%的对象存活，因此A<strong>ppel式回收还有一个充当罕见情况的==“逃生门”==的安全设计</strong>，<strong>当Survivor空间不足以容纳一次Minor GC之后存活的对象时，就需要依赖其他内存区域（实际上大多就是老年代）进行分配担保（Handle Promotion）</strong>。</p>
+<h3 id="标记-整理算法-（老年代使用）"><a href="#标记-整理算法-（老年代使用）" class="headerlink" title="标记-整理算法 （老年代使用）"></a>标记-整理算法 （老年代使用）</h3><p><strong>标记-复制算法在对象存活率较高时就要进行较多的复制操作，效率将会降低。</strong></p>
+<p>如果不想浪费50%的空间，就需要有额外的空间进行分配担保，以应对被使用的内存中所有对象都100%存活的极端情况，所以在老年代一般不能直接选用这种算法。</p>
+<p>针对老年代对象的存亡特征，1974年<strong>Edward Lueders</strong>提出了另外一种有针对性的<strong>“标记-整理”（Mark-Compact）算法</strong>，其中的<strong>标记过程仍然与“标记-清除”算法一样</strong>，但后续步骤不是直接对可回收对象进行清理，而是<strong>让所有存活的对象都向内存空间一端移动</strong>，<strong>然后直接清理掉边界以外的内存</strong>，“标记-整理”算法的示意图如图3-4所示。</p>
+<img src="/2022/04/06/d47b630de3bd/mark-move.png" class="" title="标记-整理算法示意图">
+<!-- ![image-20210725190425159](第3章 垃圾收集器与内存分配策略.assets/image-20210725190425159.png) -->
+
+<p>如果移动存活对象，尤其是<strong>在老年代这种每次回收都有大量对象存活区域</strong>，<strong>移动存活对象并更新所有引用这些对象的地方将会是一种极为负重的操作</strong>，而且这种对象移动操作必须全程暂停用户应用程序才能进行[^1]，这就更加让使用者不得不小心翼翼地权衡其弊端了，像这样的停顿被最初的虚拟机 设计者形象地描述为<strong>“Stop The World”</strong> 。 </p>
+<p>[^1]: 最新的ZGC和Shenandoah收集器使用读屏障（Read Barrier）技术实现了整理过程与用户线程的并发 执行，稍后将会介绍这种收集器的工作原理。 </p>
+<h2 id="HotSpot的算法细节实现"><a href="#HotSpot的算法细节实现" class="headerlink" title="HotSpot的算法细节实现"></a>HotSpot的算法细节实现</h2><p>固定可作为GC Roots的节点主要在全局性的引用（例如常量或类静态属性）与执行上下文（例如栈帧中的本地变量表）中迄今为止，<strong>所有收集器在根节点枚举这一步骤时都是必须暂停用户线程的</strong>，因此<strong>毫无疑问<u>根节点枚举</u>与之前提及的<u>整理内存碎片</u>一样会面临相似的“Stop The World”的困扰</strong>。</p>
+<p>现在<strong>可达性分析算法</strong>耗时最长的查找引用链的过程已经可以做到<strong>与用户线程一起并发</strong>。</p>
+<p>但<strong>根节点枚举</strong>始终还是必须在一个能<strong>保障一致性的快照</strong>中才得以进行——这里“一致性”的意思是整个枚举期间执行子系统看起来就像被冻结在某个时间点上，不会出现分析过程中，根节点集合的对象引用关系还在不断变化 的情况，若这点不能满足的话，分析结果准确性也就无法保证。  这是导致垃圾收集过程必须停顿所有用户线程的其中一个重要原因</p>
+<p>==<strong>根节点枚举在任何情况下都是必须要停顿的</strong>==</p>
+<p><strong>准确式垃圾收集</strong></p>
+<ul>
+<li>所以当用户线程停顿下来之后，其实并不需要一个不漏地检查完所有执行上下文和全局的引用位置，<strong>虚拟机应当是有办法直接得到哪些地方存放着对象引用的</strong>。是使用一组称为<strong>OopMap的数据结构</strong>来达到这个目的。一旦类加载动作完成的时候， HotSpot就会把对象内什么偏移量上是什么类型的数据计算出来。</li>
+</ul>
+<h3 id="安全点——什么时候该GC"><a href="#安全点——什么时候该GC" class="headerlink" title="安全点——什么时候该GC"></a>安全点——什么时候该GC</h3><blockquote>
+<p>在OopMap的协助下，HotSpot可以快速准确地完成GC Roots枚举，但一个很现实的问题随之而 来：可能导致引用关系变化，或者说导致OopMap内容变化的指令非常多，<strong>如果为每一条指令都生成对应的OopMap，那将会需要大量的额外存储空间，这样垃圾收集伴随而来的空间成本就会变得无法忍受的高昂。</strong> </p>
+</blockquote>
+<p><strong>实际上HotSpot也的确没有为每条指令都生成OopMap</strong>，只是在<strong>“特定的位置”</strong>记录 了这些信息，这些位置被称为<strong>安全点（Safepoint）</strong>。</p>
+<p><strong>有了安全点的设定，也就决定了用户程序执行时 并非在代码指令流的任意位置都能够停顿下来开始垃圾收集，而是强制要求必须执行到达安全点后才 能够暂停。</strong></p>
+<p><strong>安全点位置的选取基本上是以“是否具有让程序长时间执行的特征”为标准 进行选定的</strong>，因为每条指令执行的时间都非常短暂，程序不太可能因为指令流长度太长这样的原因而长时间执行，<strong>“长时间执行”的最明显特征就是<u>指令序列的复用</u>，例如方法调用、循环跳转、异常跳转 等都属于指令序列复用，所以只有具有这些功能的指令才会产生安全点。</strong> </p>
+<p>对于安全点，另外一个需要考虑的问题是，<strong>如何在垃圾收集发生时让所有线程（这里其实不包括 执行JNI调用的线程）都跑到最近的安全点，然后停顿下来</strong>。这里有两种方案可供选择：</p>
+<p><strong>抢先式中断 （Preemptive Suspension）：</strong>不需要线程的执行代码主动去配合，在垃圾收集发生时，系统首先把所有用户线程全部中断，如果发现有用户线程中断的地 方不在安全点上，就恢复这条线程执行，让它一会再重新中断，直到跑到安全点上。<strong>现在几乎没有虚拟机实现采用抢先式中断来暂停线程响应GC事件。</strong> </p>
+<p><strong>主动式中断（Voluntary Suspension）：</strong>主动式中断的思想是当垃圾收集需要中断线程的时候，不直接对线程操作，仅仅简单地<strong>设置一个<u>标志位</u><strong>，</strong>各个线程执行过程时会不停地主动去轮询这个标志，一旦发现中断标志为真时就自己在最 近的安全点上主动中断挂起</strong>。轮询标志的地方和安全点是重合的，另外还要加上所有创建对象和其他需要在Java堆上分配内存的地方，这是为了检查是否即将要发生垃圾收集，避免没有足够内存分配新对象。</p>
+<p><strong>HotSpot使用<u>内存保护陷阱</u>的方式， 把轮询操作精简至只有一条汇编指令的程度。</strong></p>
+<h3 id="安全区域——什么时候该GC"><a href="#安全区域——什么时候该GC" class="headerlink" title="安全区域——什么时候该GC"></a>安全区域——什么时候该GC</h3><p><strong>安全点机制</strong>保证了程序执行时，在不太长的时间内就会遇到可进入垃圾收集过程的安全点。</p>
+<p>但是，<strong>程序“不执行”的时候呢？</strong></p>
+<p>所谓的程序不执行就是没有分配处理器时间，典型的场景便是用户线程处于Sleep状态或者Blocked状态，这时候线程无法响应虚拟机的中断请求，不能再走到安全的地方去中断挂起自己，虚拟机也显然不可能持续等待线程重新被激活分配处理器时间。对于 这种情况，就必须引入<strong>安全区域（Safe Region）</strong>来解决。 </p>
+<p><strong>安全区域是指能够确保在某一段代码片段之中，引用关系不会发生变化</strong>，因此，在这个区域中任意地方开始垃圾收集都是安全的。我们==<strong>也可以把<u>安全区域</u>看作被扩展拉伸了的<u>安全点</u></strong>==。</p>
+<p><strong>当用户线程执行到<u>安全区域</u>里面的代码时，首先会标识自己已经进入了安全区域，那样当这段时间里虚拟机要发起垃圾收集时就不必去管这些已声明自己在安全区域内的线程了。当线程要离开安全区域时，它要检查虚拟机是否已经完成了根节点枚举（或者垃圾收集过程中其他需要暂停用户线程的阶段），如果完成了，那线程就当作没事发生过，继续执行；否则它就必须一直等待，直到收到可以离开安全区域的信号为止。</strong></p>
+<h3 id="记忆卡与卡表——解决跨代引用问题"><a href="#记忆卡与卡表——解决跨代引用问题" class="headerlink" title="记忆卡与卡表——解决跨代引用问题"></a>记忆卡与卡表——解决跨代引用问题</h3><p><strong>记忆集（Remembered Set）的数据结构</strong>解决跨代（新生代到老年代的引用）/ 所有涉及部分区域收集（Partial GC）行为的垃圾收集器（GC）问题。</p>
+<p><strong>记忆集</strong>是一种用于<strong>记录从非收集区域指向收集区域的指针集合的抽象数据结构</strong>。</p>
+<p>收集器只需要通过记忆集判断出某一块非收集区域是否存在有指向了收集区域的指针就可以了，并不需要了解这些跨代指针的全部细节。</p>
+<ul>
+<li><p><strong>字长精度</strong>：每个记录精确到一个机器字长（就是处理器的寻址位数，如常见的32位或64位，这个精度决定了机器访问物理内存地址的指针长度），该字包含跨代指针。 </p>
+</li>
+<li><p><strong>对象精度</strong>：每个记录精确到一个对象，该对象里有字段含有跨代指针。 </p>
+</li>
+<li><p><strong>卡精度</strong>：<strong>每个记录精确到一块内存区域，该区域内有对象含有跨代指针。</strong> </p>
+</li>
+</ul>
+<p>其中，第三种<strong>“卡精度”</strong>所指的是用一种称为<strong>“卡表”（Card Table）</strong>的方式去实现<strong>记忆集</strong>，这也是 目前最常用的一种记忆集实现形式。</p>
+<p><strong>卡表就是记忆集的一种具体实现，它定义了记忆集的记录精度、与堆内存的映射关系等。</strong></p>
+<p>卡表最简单的形式可以只是一个字节数组，而HotSpot虚拟机确实也是这样做的。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">CARD_TABLE [this address &gt;&gt; <span class="number">9</span>] = <span class="number">0</span>;</span><br></pre></td></tr></table></figure>
+
+<p>例如：</p>
+<p>第一块内存的地址为512，第二块为1024，第三块为1536，第四块为2048…</p>
+<p>CARD_TABLE [512 &gt;&gt; 9] = 0;                     512 &gt;&gt;  9  = 1</p>
+<p>CARD_TABLE [1024 &gt;&gt; 9] = 0;                    1024 &gt;&gt; 9 = 2</p>
+<p>CARD_TABLE [1536 &gt;&gt; 9] = 0;                    1536 &gt;&gt; 9 = 3</p>
+<p>CARD_TABLE [2048 &gt;&gt; 9] = <strong>1</strong>;                    2048 &gt;&gt; 9 = 4    // 说明这个卡页就是脏的，有跨代引用</p>
+<p>…</p>
+<p>可看出，卡页为2^9=512字节。</p>
+<p>一个卡页的内存中通常包含不止一个对象，<strong>只要卡页内有一个（或更多）对象的字段存在着跨代指针，那就将对应卡表的数组元素的值标识为1，称为这个元素变脏（Dirty），没有则标识为0</strong>。在垃圾收集发生时，只要筛选出卡表中变脏的元素，就能轻易得出哪些卡页内存块中包含跨代指针，把它们加入GC Roots中一并扫描。 </p>
+<img src="/2022/04/06/d47b630de3bd/card-list2.png" class="" title="卡表示意图">
+
+<img src="/2022/04/06/d47b630de3bd/card-list.png" class="" title="卡表示意图2">
+<!-- <img src="第3章 垃圾收集器与内存分配策略.assets/image-20210725225221536.png" alt="image-20210725225221536" style="zoom:67%;" /> -->
+
+<!-- ![image-20210725225527154](第3章 垃圾收集器与内存分配策略.assets/image-20210725225527154.png) -->
+
+<h3 id="写屏障——修改卡表（使变脏）"><a href="#写屏障——修改卡表（使变脏）" class="headerlink" title="写屏障——修改卡表（使变脏）"></a>写屏障——修改卡表（使变脏）</h3><h4 id="拓展："><a href="#拓展：" class="headerlink" title="拓展："></a>拓展：</h4><ul>
+<li><p><strong>读屏障</strong>、</p>
+</li>
+<li><p><strong>内存屏障</strong>（解决并发乱序执行问题）</p>
+</li>
+</ul>
+<p><strong>使用记忆集来缩减GC Roots扫描范围的问题，但还没有解决卡表元素如何维护的问题，例如它们何时变脏、谁来把它们变脏等。</strong> </p>
+<p>卡表元素何时变脏的答案是很明确的——有其他分代区域中对象引用了本区域对象时，其对应的卡表元素就应该变脏，<strong>变脏时间点原则上应该发生在引用类型字段赋值的那一刻</strong>。</p>
+<ul>
+<li><p><input disabled="" type="checkbox">  但问题是如何变 脏，即如何在对象赋值的那一刻去更新维护卡表呢？假如是解释执行的字节码，那相对好处理，虚拟机负责每条字节码指令的执行，有充分的介入空间；但在编译执行的场景中呢？经过即时编译后的代码已经是纯粹的机器指令流了，这就必须找到一个在机器码层面的手段，把维护卡表的动作放到每一个赋值操作之中。 </p>
+</li>
+<li><p><strong>写屏障可以看作在虚拟机层面对“引用类型字段赋值”这个动作的AOP切面</strong>，在引用对象赋值时会产生一个<strong>环形（Around）通知</strong>，供程序执行额外的动作，也就是说赋值的前后都在写屏障的覆盖范畴内。在赋值前的部分的写屏障叫作<strong>写前屏障（Pre-Write Barrier）</strong>，在赋值后的则叫作<strong>写后屏障（Post-Write Barrier）</strong>。</p>
+</li>
+</ul>
+<blockquote>
+<p>HotSpot虚拟机的许多收集器中都有使用到写屏障，但直至G1收集器出现之前，其他收集器都只用到了<strong>写后屏障</strong>。</p>
+</blockquote>
+<p>写屏障这个开销与Minor GC时扫描整个老年代的代价相比还是低得多的。</p>
+<p><strong>卡表</strong>在高并发场景下还面临着<strong>“伪共享”（False Sharing）问题</strong></p>
+<h4 id="伪共享问题"><a href="#伪共享问题" class="headerlink" title="伪共享问题"></a>伪共享问题</h4><p>伪共享是处 理并发底层细节时一种经常需要考虑的问题，现代中央处理器的缓存系统中是以<strong>缓存行（Cache Line）</strong> 为单位存储的，<strong>当多线程修改互相独立的变量时，如果这些变量恰好共享同一个缓存行，就会彼此影 响（写回、无效化或者同步）而导致性能降低，这就是伪共享问题。</strong> </p>
+<p>假设处理器的缓存行大小为64字节，由于一个卡表元素占1个字节，64个卡表元素将共享同一个缓存行。这64个卡表元素对应的卡页总的内存为32KB（64×512字节），也就是说如果不同线程更新的对象正好处于这32KB的内存区域内，就会导致更新卡表时正好写入同一个缓存行而影响性能。为了<strong>避免伪共享问题</strong>，一种简单的解决方案是<strong>不采用无条件的写屏障</strong>，<strong>而是先检查卡表标记，只有当该卡表元素未被标记过时才将其标记为变脏</strong>，即将卡表更新的逻辑变为以下代码所示：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (CARD_TABLE [<span class="built_in">this</span> address &gt;&gt; <span class="number">9</span>] != <span class="number">0</span>) </span><br><span class="line">    CARD_TABLE [<span class="built_in">this</span> address &gt;&gt; <span class="number">9</span>] = <span class="number">0</span>;</span><br></pre></td></tr></table></figure>
+
+<h3 id="并行的可达性分析"><a href="#并行的可达性分析" class="headerlink" title="并行的可达性分析"></a>并行的可达性分析</h3><p><strong>可达性分析算法</strong>理论上要求全过程都<strong>基于一个能保障一致性的快照中才能够进行分析</strong>，这意味着必须<strong>全程冻结用户线程的运行</strong>。</p>
+<p>要知道包含<strong>“标记”阶段</strong>是所有<strong>追踪式垃圾收集算法</strong>的共同特征，如果<strong>这个阶段会随着堆变大而等比例增加停顿时间</strong>，其影响就会波及几乎所有的垃圾收集器，同理可知，如果能够削减这部分停顿时 间的话，那收益也将会是系统性的。 </p>
+<p>要知道包含“标记”阶段是所有追踪式垃圾收集算法的共同特征，如果这个阶段会随着堆变大而等 比例增加停顿时间，其影响就会波及几乎所有的垃圾收集器，同理可知，如果能够削减这部分停顿时间的话，那收益也将会是系统性的。 </p>
+<p><strong>三色标记（Tri-color Marking）</strong></p>
+<ul>
+<li><p>白色：<strong>表示对象尚未被垃圾收集器访问过</strong>。显然在可达性分析刚刚开始的阶段，所有的对象都是白色的，若<strong>在分析结束的阶段，仍然是白色的对象，即代表不可达</strong>。 </p>
+</li>
+<li><p>黑色：表示对象已经被垃圾收集器访问过，且这个对象的所有引用都已经扫描过。黑色的对象代 表已经扫描过，它是<strong>安全存活的</strong>，如果有其他对象引用指向了黑色对象，无须重新扫描一遍。<strong>黑色对象不可能直接（不经过灰色对象）指向某个白色对象</strong>。 </p>
+</li>
+<li><p>灰色：<strong>表示对象已经被垃圾收集器访问过，但这个对象上至少存在一个引用还没有被扫描过。</strong> </p>
+</li>
+</ul>
+<p>关于可达性分析的扫描过程，读者不妨发挥一下想象力，把它看作对象图上一股以灰色为波峰的波纹从黑向白推进的过程，如果用户线程此时是冻结的，只有收集器线程在工作，那不会有任何问题。但<strong>如果用户线程与收集器是并发工作呢</strong>？</p>
+<p>收集器在对象图上标记颜色，同时用户线程在修改引用关系——即修改对象图的结构，这样可能出现两种后果。</p>
+<ul>
+<li>一种是把原本消亡的对象错误标记为存活，这不是好事，但其实是可以容忍的，只不过产生了一点逃过本次收集的浮动垃圾而已，下次收集清理掉就好。</li>
+<li><strong>另一种是把原本存活的对象错误标记为已消亡，这就是非常致命的后果了，程序肯定会因此发生错误，</strong></li>
+</ul>
+<p>下面表3-1演示了这样的致命错误具体是如何产生的。 </p>
+<img src="/2022/04/06/d47b630de3bd/accessibility-analysis2.png" class="" title="GC-Roots对象可达性标记">
+
+<!-- ![image-20210726151951860](第3章 垃圾收集器与内存分配策略.assets/image-20210726151951860.png) -->
+
+<ul>
+<li><p>赋值器（用户线程）插入了一条或多条从黑色对象到白色对象的新引用； </p>
+</li>
+<li><p>赋值器删除了全部从灰色对象到该白色对象的直接或间接引用。</p>
+</li>
+</ul>
+<h4 id="解决方案：-1"><a href="#解决方案：-1" class="headerlink" title="解决方案："></a>解决方案：</h4><p><strong>增量更新（Incremental Update）</strong>和<strong>原始快照（Snapshot At The Beginning，SATB）</strong>。</p>
+<ul>
+<li><p><strong>增量更新</strong>要破坏的是第一个条件，当黑色对象插入新的指向白色对象的引用关系时，就<strong>将这个新插入的引用记录下来</strong>，等并发扫描结束之后，再将这些记录过的引用关系中的黑色对象为根，重新扫描一次。这可以简化理解为，黑色对象一旦新插入了指向白色对象的引用之后，它就变回灰色对象了。（解决<strong>“浮动垃圾”</strong>问题）</p>
+</li>
+<li><p><strong>原始快照</strong>要破坏的是第二个条件，当灰色对象要删除指向白色对象的引用关系时，就将这个要删除的引用记录下来，在并发扫描结束之后，<strong>再将这些记录过的引用关系中的灰色对象为根，重新扫描 一次</strong>。这也可以简化理解为，<strong>无论引用关系删除与否，都会按照刚刚开始扫描那一刻的对象图快照来进行搜索。</strong> （解决对象被<strong>“误删”</strong>问题）</p>
+</li>
+</ul>
+<p>以上无论是对引用关系记录的插入还是删除，虚拟机的记录操作都是通过<strong>写屏障（类似AOP功能）</strong>实现的。在 HotSpot虚拟机中，<strong>增量更新</strong>和<strong>原始快照</strong>这两种解决方案都有实际应用，譬如，</p>
+<ul>
+<li><strong>CMS</strong>是基于<strong>增量更新</strong>来做并发标记的，</li>
+<li><strong>G1</strong>、<strong>Shenandoah</strong>则是用<strong>原始快照</strong>来实现。 </li>
+</ul>
+<h2 id="经典垃圾收集器"><a href="#经典垃圾收集器" class="headerlink" title="经典垃圾收集器"></a>经典垃圾收集器</h2><img src="/2022/04/06/d47b630de3bd/gc-categories.png" class="" title="HotSpot虚拟机的垃圾收集器">
+<!-- ![image-20220407073915722](第3章 垃圾收集器与内存分配策略.assets/image-20220407073915722.png) -->
+
+<p>图3-6展示了七种作用于不同分代的收集器，如果两个收集器之间存在连线，就说明它们可以搭配 使用</p>
+<h3 id="Serial收集器-新生代"><a href="#Serial收集器-新生代" class="headerlink" title="Serial收集器 [新生代]"></a>Serial收集器 [新生代]</h3><ul>
+<li>Serial收集器是最基础、历史最悠久的收集器</li>
+<li>单线程工作的收集器</li>
+<li>Stop The World</li>
+<li>采取标志-复制算法</li>
+</ul>
+<h3 id="ParNew收集器-新生代"><a href="#ParNew收集器-新生代" class="headerlink" title="ParNew收集器 [新生代]"></a>ParNew收集器 [新生代]</h3><p>可以理解为<strong>多线程版的Serial收集器</strong> </p>
+<ul>
+<li>是Serial收集器的多线程并行版本</li>
+<li>采取标志-复制算法</li>
+<li>Stop The World</li>
+<li>-XX：ParallelGCThreads参数来限制垃圾收集的线程数</li>
+</ul>
+<blockquote>
+<p>除了Serial收集器外，目前只有它能与<strong>CMS收集器</strong>配合工作。 </p>
+</blockquote>
+<h3 id="Parallel-Scavenge收集器-新生代"><a href="#Parallel-Scavenge收集器-新生代" class="headerlink" title="Parallel Scavenge收集器 [新生代]"></a>Parallel Scavenge收集器 [新生代]</h3><ul>
+<li><p>采取标志-复制算法</p>
+</li>
+<li><p>“吞吐量优先收集器”</p>
+</li>
+<li><p>控制最大垃圾收集停顿时间 的**-XX：MaxGCPauseMillis参数**，允许的值是一个大于0的毫秒数，收集器将尽力保证内存回收花费的时间不超过用户设定值。</p>
+</li>
+<li><p>直接设置吞吐量大小的**-XX：GCTimeRatio参数。** 大于0小于100的整数，也就是垃圾收集时间占总时间的 比率，相当于吞吐量的倒数。</p>
+</li>
+<li><p>参数-XX：+UseAdaptiveSizePolicy值得我们关注。这是一 个开关参数，当这个参数被激活之后，就不需要人工指定新生代的大小（-Xmn）、Eden与Survivor区 的比例（-XX：SurvivorRatio）、晋升老年代对象大小（-XX：PretenureSizeThreshold）等细节参数了，虚拟机会根据当前系统的运行情况收集性能监控信息，动态调整这些参数以提供最合适的停顿时间或者最大的吞吐量。</p>
+</li>
+<li><p>它的关注点与其他收集器不同，CMS等收集器的关注点是尽可能地缩短垃圾收集时用户线程的停顿时间，而Parallel Scavenge收集器的目标则是<strong>达到一个可控制的吞吐量（Throughput）。</strong>所谓吞吐量就是处理器用于运行用户代码的时间与处理器总消耗时间的比值， </p>
+  <img src="/2022/04/06/d47b630de3bd/throughput-compute.png" class="" title="吞吐量计算">
+
+<!-- ![image-20220407075137325](第3章 垃圾收集器与内存分配策略.assets/image-20220407075137325.png) -->
+
+<p>例如：如果虚拟机完成某个任务，用户代码加上垃圾收集总共耗费了100分钟，其中垃圾收集花掉1分 </p>
+<p>钟，那吞吐量就是99%。</p>
+<p>而高吞吐量则可以最高效率地利用处理器资源，尽快完成程序的运算任务，<strong>主要适合在后台运算而不需要太多交互的分析任务。</strong> </p>
+</li>
+</ul>
+<h3 id="Serial-Old收集器-老年代"><a href="#Serial-Old收集器-老年代" class="headerlink" title="Serial Old收集器  [老年代]"></a>Serial Old收集器  [老年代]</h3><ul>
+<li>Serial Old是Serial收集器的老年代版本</li>
+<li>单线程收集器</li>
+<li>标记-整理算法</li>
+</ul>
+<h3 id="Parallel-Old收集器-老年代"><a href="#Parallel-Old收集器-老年代" class="headerlink" title="Parallel Old收集器 [老年代]"></a>Parallel Old收集器 [老年代]</h3><ul>
+<li><p>Parallel Old是Parallel Scavenge收集器的老年代版本</p>
+</li>
+<li><p>多线程并发收集</p>
+</li>
+<li><p>标记-整理算法</p>
+</li>
+</ul>
+<h3 id="Concurrent-Mark-Sweep（CMS）收集器-老年代"><a href="#Concurrent-Mark-Sweep（CMS）收集器-老年代" class="headerlink" title="Concurrent Mark Sweep（CMS）收集器 [老年代]"></a>Concurrent Mark Sweep（CMS）收集器 [老年代]</h3><p>“并发低停顿收集器”（Concurrent Low Pause Collector）。</p>
+<ul>
+<li>是一种以获取最短回收停顿时间为目标的收集器</li>
+<li>标记-清除算法实现（分为四个步骤）<ul>
+<li>初始标记（CMS initial mark） <strong>[Stop The World]</strong><ul>
+<li>仅仅只是<strong>标记一下GC Roots能直接关联到的对象</strong>，速度很快</li>
+</ul>
+</li>
+<li>并发标记（CMS concurrent mark） <ul>
+<li>从GC Roots的直接关联对象开始遍历整个对象图的过程，这个过程<strong>耗时较长</strong>但是<strong>不需要停顿用户线程</strong>，<strong>可以与垃圾收集线程一起并发运行</strong></li>
+</ul>
+</li>
+<li>重新标记（CMS remark） <strong>[Stop The World]</strong><ul>
+<li><strong>修正并发标记期间</strong>，因用户程序继续运作而导致标记产生变动的那一部分对象的标记记录(见上小节：<strong>并行的可达性分析 - 增量更新</strong>)</li>
+</ul>
+</li>
+<li>并发清除（CMS concurrent sweep） <ul>
+<li><strong>清理删除掉标记阶段判断的已经死亡的对象</strong>，由于<strong>不需要移动存活对象</strong>，所以这个阶段也是可以<strong>与用户线程同时并发的</strong>。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<img src="/2022/04/06/d47b630de3bd/CMS-gc-run.png" class="" title="CMS收集器运行示意图">
+<!-- ![image-20220407080557880](第3章 垃圾收集器与内存分配策略.assets/image-20220407080557880.png) -->
+
+<p>缺点：</p>
+<ul>
+<li><p>在并发阶段，它虽然不会导致用户线程停顿，但却会因为<strong>占用了一部分线程</strong>（或者说处理器的计 算能力）<strong>而导致应用程序变慢，降低总吞吐量</strong>。</p>
+</li>
+<li><p>无法处理<strong>“浮动垃圾”（Floating Garbage）</strong>，有可能出现“Con-current Mode Failure”失败进而导致另一次完全“Stop The World”的Full GC的产生。</p>
+<ul>
+<li>在CMS的并发标记和并发清理阶 段，用户线程是还在继续运行的，程序在运行自然就还会伴随有新的垃圾对象不断产生，但<strong>这一部分垃圾对象是出现在标记过程结束以后，CMS无法在当次收集中处理掉它们</strong>，只好留待下一次垃圾收集时再清理掉。这一部分垃圾就称为<strong>“浮动垃圾”。</strong></li>
+<li>同样也是由于在垃圾收集阶段用户线程还需要持续运行，那就<strong>还需要预留足够内存空间提供给用户线程使用</strong>，因此CMS收集器不能像其他收集器那样等待到老年代几乎完全被填满了再进行收集，必须预留一部分空间供并发收集时的程序运作使用。</li>
+<li>要是CMS运行期间<strong>预留的内存无法满足程序分配新对象的需要</strong>，就会出现一次<strong>“并发失败”（Concurrent Mode Failure）</strong>，这时候虚拟机将不 得不启动后备预案：冻结用户线程的执行，临时启用Serial Old收集器来重新进行老年代的垃圾收集， 但这样停顿时间就很长了。</li>
+</ul>
+</li>
+<li><p>CMS是一款基于<strong>“标记-清除”算法</strong>实现的收集器，可能意味着收集结束时会有大量空间碎片产生。</p>
+</li>
+</ul>
+<h3 id="Garbage-First（G1）收集器-全堆，里程碑"><a href="#Garbage-First（G1）收集器-全堆，里程碑" class="headerlink" title="Garbage First（G1）收集器 [全堆，里程碑]"></a>Garbage First（G1）收集器 [全堆，里程碑]</h3><p>Garbage First（简称G1）收集器是垃圾收集器技术发展历史上的里程碑式的成果，它<strong>开创了收集器面向局部收集的设计思路和基于Region的内存布局形式。</strong></p>
+<p>到了JDK 8 Update 40的时候，G1提供并发的类卸载的支持，补全了其计划功能的最后一块拼图。</p>
+<p>这个版本以后的G1收集器才被Oracle官方称为<strong>“全功能的垃圾收集器”（Fully-Featured Garbage Collector）。</strong></p>
+<p>JDK 9发布之日，G1宣告取代Parallel Scavenge加Parallel Old组合，成为<strong>服务端模式下的默认垃圾收集器。</strong>而<strong>CMS</strong>则沦落至被声明为不推荐使用（Deprecate）的收集器。</p>
+<p>规划JDK 10功能目标时，HotSpot虚拟机提出了“<strong>统一垃圾收集器接口</strong>”，将内存回收的<strong>“行为”与“实现”进行分离</strong>，CMS以及其他收集器都重构成基于这套 接口的一种实现。以此为基础，日后要移除或者加入某一款收集器，都会变得容易许多，风险也可以控制，这算是在为CMS退出历史舞台铺下最后的道路了</p>
+<p>在G1收集器出现之前的所有 其他收集器，包括CMS在内，垃圾收集的目标范围要么是整个新生代（Minor GC），要么就是整个老 年代（Major GC），再要么就是整个Java堆（Full GC）。</p>
+<p>而G1跳出了这个樊笼，它可以<strong>面向堆内存任 何部分来组成回收集（Collection Set，一般简称CSet）进行回收</strong>，衡量标准不再是它属于哪个分代，而是哪块内存中存放的垃圾数量最多，回收收益最大，这就是G1收集器的<strong>Mixed GC模式</strong>。</p>
+<p>G1开创的<strong>基于Region的堆内存布局</strong>是它能够实现这个目标的关键。</p>
+<ul>
+<li><p>虽然G1也仍是遵循分代收集理论设计的，但其堆内存的布局与其他收集器有非常明显的差异：<strong>G1不再坚持固定大小以及固定数量的分代区域划分</strong>，而是<strong>把连续的Java堆划分为多个大小相等的独立区域（Region）</strong>，<strong>每一个Region都可以根据需要，扮演新生代的Eden空间、Survivor空间，或者老年代空间</strong>。</p>
+</li>
+<li><p>Region中还有一类特殊的<strong>Humongous区域</strong>，专门用来<strong>存储大对象</strong>。G1认为只要大小超过了一个 Region容量一半的对象即可判定为大对象。每个Region的大小可以通过参数**-XX：G1HeapRegionSize<strong>设 定，取值范围为1MB～32MB，且应为2的N次幂。而对于那些超过了整个Region容量的超级大对象，将会被存放在N个连续的Humongous Region之中，G1的大多数行为都把Humongous Region作为</strong>老年代**的一部分来进行看待，如图3-12所示。 </p>
+  <img src="/2022/04/06/d47b630de3bd/G1-region-layout.png" class="" title="G1收集器Region分区示意图">
+<!-- ![image-20220407082335133](第3章 垃圾收集器与内存分配策略.assets/image-20220407082335133.png) --></li>
+</ul>
+<p>G1收集器之所以能建立可预测的停顿时间模型，是因为它<strong>将Region作为单次回收的最小单元</strong>，即<strong>每次收集到的内存空间都是Region大小的整数倍</strong>，这样可以<strong>有计划地避免在整个Java堆中进行全区域的垃圾收集</strong>。</p>
+<ul>
+<li>G1收集器去跟踪各个Region里面的垃圾堆积的“价值”大小，价值即回收所获得的空间大小以及回收所需时间的经验值，然后在后台维护一个<strong>优先级列表</strong>。</li>
+<li>每次根据用户设定允许的收集停顿时间（使用参数-XX：MaxGCPauseMillis指定，默认值是200毫秒），<strong>优先处理回收价值收益最大的那些Region</strong>，这也就是“Garbage First”名字的由来。</li>
+</ul>
+<p>问题：</p>
+<ul>
+<li><p>将Java堆分成多个独立Region后，Region里面存在的跨Region引用对象如何解决？</p>
+<ul>
+<li>使用记忆集避免全堆作为GC Roots扫描，但在G1收集器上记忆集的应用其实要复杂很多，它的<strong>每个Region都维护有自己的记忆集</strong>，这些记忆集会记录下别的Region指向自己的指针，并标记这些指针分别在哪些卡页的范围之内。<strong>G1的记忆集</strong>在存储结构的本质上是一种<strong>哈希表</strong>，<strong>Key是别的Region的起始地址</strong>，<strong>Value是一个集合</strong>，里面存储的元素是<strong>卡表的索引号</strong>。</li>
+<li>这种<strong>“双向”的卡表结构</strong>（卡表是“我指向谁”，这种结构还记录了“谁指向我”）比原来的卡表实现起来更 复杂，同时由于Region数量比传统收集器的分代数量明显要多得多，因此G1收集器要比其他的传统垃 圾收集器有着更高的内存占用负担。根据经验，G1至少要耗费大约相当于Java堆容量10%至20%的额外内存来维持收集器工作。 </li>
+</ul>
+</li>
+<li><p>在并发标记阶段如何保证收集线程与用户线程互不干扰地运行？</p>
+<ul>
+<li><strong>CMS收集器采用增量更新算法</strong>实现，而<strong>G1 收集器则是通过原始快照（SATB）算法</strong>来实现的。</li>
+<li>垃圾收集对用户线程的影响还体现在回收过程中新创建对象的内存分配上，程序要继续运行就肯定会持续有新对象被创建，G1为每一个Region设计了<strong>两个名为TAMS（Top at Mark Start）的指针</strong>，把Region中的一部分空间划分出来用于并发回收过程中的新对象分配，<strong>并发回收时新分配的对象地址都必须要在这两个指针位置以上</strong>。G1收集器默认在这个地址以上的对象是被隐式标记过的，即默认它们是存活的，不纳入回收范围。与CMS中的“Concurrent Mode Failure”失败会导致Full GC类似，<strong>如果内存回收的速度赶不上内存分配的速度，G1收集器也要被迫冻结用户线程执行，导致Full GC而产生长时间“Stop The World”</strong>。 </li>
+</ul>
+</li>
+<li><p>怎样建立起可靠的停顿预测模型？</p>
+<ul>
+<li>G1收集器的停顿 预测模型是以<strong>衰减均值（Decaying Average）</strong>为理论基础来实现的，在垃圾收集过程中，G1收集器会记 录每个Region的回收耗时、每个Region记忆集里的脏卡数量等各个可测量的步骤花费的成本，并分析得 出平均值、标准偏差、置信度等统计信息。</li>
+</ul>
+</li>
+</ul>
+<p>G1收集器的运作过程大致可划分为以下四个步骤:</p>
+<ul>
+<li>初始标记（Initial Marking）**[Stop The World]**<ul>
+<li>仅仅只是标记一下GC Roots能直接关联到的对象，并且<strong>修改TAMS指针的值</strong>，让下一阶段用户线程并发运行时，能正确地在可用的Region中分配新对象。</li>
+<li>这个阶段<strong>需要停顿线程，但耗时很短</strong>，而且是借用进行Minor GC的时候同步完成的，所以G1收集器在这个阶段实际并没有额外的停顿。 </li>
+</ul>
+</li>
+<li>并发标记（Concurrent Marking）<ul>
+<li> 与CMS类似</li>
+</ul>
+</li>
+<li>最终标记（Final Marking）**[Stop The World]**<ul>
+<li>对用户线程做另一个短暂的暂停，用于处理并发阶段结束后仍遗留下来的最后那少量的<strong>SATB记录</strong>。 </li>
+</ul>
+</li>
+<li>筛选回收（Live Data Counting and Evacuation）**[Stop The World]**<ul>
+<li>负责更新Region的统计数据，对各个Region的回收价值和成本进行排序，根据用户所期望的停顿时间来制定回收计划，可以自由选择任意多个Region 构成回收集，然后把决定回收的那一部分Region的存活对象复制到空的Region中，再清理掉整个旧Region的全部空间。这里的操作<strong>涉及存活对象的移动，是必须暂停用户线程</strong>，由多条收集器线程并行完成的。</li>
+</ul>
+</li>
+</ul>
+<p>G1收集器<strong>除了并发标记外，其余阶段也是要完全暂停用户线程的</strong>，换言之，它并非纯粹地追求低延迟，官方给它设定的目标是在延迟可控的情况下获得尽可能高的吞吐量，所以才能担当起“全功能收集器”的重任与期望。</p>
+<img src="/2022/04/06/d47b630de3bd/G1-gc-run.png" class="" title="G1收集器运行示意图">
+<!-- ![image-20220407203706565](第3章 垃圾收集器与内存分配策略.assets/image-20220407203706565.png) -->
+
+<p>回收阶段（Evacuation）其实本也有想过设计成与用户程序一起并发执行，但这件事情做起来比较复杂，考虑到<strong>G1只是回收一部分Region</strong>，<strong>停顿时间是用户可控制的</strong>，所以并不迫切去实现，而选择把这个特性放到了G1之后出现的低延迟垃圾收集器（即ZGC） 中。</p>
+<p>还考虑到G1不是仅仅面向低延迟，<strong>停顿用户线程能够最大幅度提高垃圾收集效率</strong>，为了保证吞吐量所以才选择了完全暂停用户线程的实现方案。</p>
+<p>毫无疑问，可以由用户指定期望的停顿时间是G1收集器很强大的一个功能，设置不同的期望停顿时间，可使得G1在不同应用场景中取得关注吞吐量和关注延迟之间的最佳平衡。</p>
+<p><strong>通常把期望停顿时间设置为一两百毫秒或者两三百毫秒会是比较合理的。</strong> </p>
+<p>从G1开始，**<u>最先进的垃圾收集器的设计导向都不约而同地变为追求能够应付应用的内存分配速率（Allocation Rate），而不追求一次把整个Java堆全部清理干净。</u>**</p>
+<h4 id="与CMS收集器相比"><a href="#与CMS收集器相比" class="headerlink" title="与CMS收集器相比"></a>与CMS收集器相比</h4><p>优点：</p>
+<ul>
+<li>相比CMS，G1的优点有很多，暂且不论可以指定最大停顿时间、分Region的内存布局、按收益动态确定回收集这些创新性设计带来的红利，单从最传统的算法理论上看，G1也更有发展潜力。</li>
+<li>与CMS的“标记-清除”算法不同，<strong>G1从整体来看是基于“标记-整理”算法实现的收集器</strong>，但<strong>从局部（两个Region之间）上看又是基于“标记-复制”算法实现</strong>，无论如何，这两种算法都<strong>意味着G1运作期间不会产生内存空间碎片</strong>，垃圾收集完成之后能提供规整的可用内存。这种特性有利于程序长时间运行，在程序为大对象分配内存时不容易因无法找到连续内存空间而提前触发下一次收集。 </li>
+</ul>
+<p> 缺点：</p>
+<ul>
+<li><p>比起CMS，G1的弱项也可以列举出不少，如在用户程序运行过程中，G1无论是为了垃圾收集产生的内存占用（Footprint）还是程序运行时的额外执行负载（Overload）都要比CMS要高。</p>
+<ul>
+<li>就内存占用来说，虽然G1和CMS都使用卡表来处理跨代指针，但<strong>G1的卡表实现更为复杂</strong>，而且<strong>堆中每个Region，无论扮演的是新生代还是老年代角色，都必须有一份卡表</strong>，这导致G1的记忆集（和其他内存消耗）可能会占整个堆容量的20%乃至更多的内存空间；</li>
+<li>相比起来CMS的卡表就相当简单，只有唯一一份，而且只需要处理老年代到新生代的引用，反过来则不需要，由于新生代的对象具有朝生夕灭的不稳定性，引用变化频繁，能省下这个区域的维护开销是很划算的。</li>
+</ul>
+</li>
+<li><p>写屏障：</p>
+<ul>
+<li><p><strong>CMS</strong>用<strong>写后屏障</strong>来更新维护卡表</p>
+</li>
+<li><p><strong>G1</strong>除了使用<strong>写后屏障</strong>来进行同样的（由于<strong>G1的卡表结构复杂</strong>，其实是更烦琐的）卡表维护操作外，为了实现<strong>原始快照搜索（SATB）算法</strong>，还需要使用<strong>写前屏障</strong>来跟踪并发时的指针变化情况。</p>
+<ul>
+<li>相比起增量更新算法，原始快照搜索能够减少并发标记和重新标记阶段的消耗，避免CMS那样在最终标记阶段停顿时间过长的缺点，但是在用户程序运行过程中确实会产生由跟踪引用变化带来的额外负担。</li>
+<li>由于G1对写屏障的复杂操作要比CMS消耗更多的运算资源，所以<strong>CMS的写屏障实现是直接的同步操作</strong>，而G1就不得不将其实现为<strong>类似于消息队列的结构</strong>，把写前屏障和写后屏障中要做的事情都放到队列里，然后再异步处理。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>目前在<strong>小内存</strong>应用上<strong>CMS</strong>的表现大概率仍然要会优于G1，而在<strong>大内存</strong>应用上<strong>G1</strong>则大多能发挥其优势，这个优劣势的Java堆容量平衡点通常在6GB至8GB之间</p>
+<h3 id="补充"><a href="#补充" class="headerlink" title="补充"></a>补充</h3><ul>
+<li><p><strong>并行（Parallel）</strong>：<strong>并行描述的是多条垃圾收集器线程之间的关系</strong>，说明<strong>同一时间有多条这样的线程在协同工作</strong>，通常默认此时用户线程是处于等待状态。 </p>
+</li>
+<li><p><strong>并发（Concurrent）</strong>：<strong>并发描述的是垃圾收集器线程与用户线程之间的关系</strong>，说明同一时间垃圾收集器线程与用户线程都在运行。由于用户线程并未被冻结，所以程序仍然能响应服务请求，但由于 垃圾收集器线程占用了一部分系统资源，此时应用程序的处理的吞吐量将受到一定影响。 </p>
+</li>
+</ul>
+<h2 id="低延迟垃圾收集器"><a href="#低延迟垃圾收集器" class="headerlink" title="低延迟垃圾收集器"></a>低延迟垃圾收集器</h2><p>衡量垃圾收集器的三项最重要的指标是：<strong>内存占用（Footprint）、吞吐量（Throughput）和延迟 （Latency）</strong>，三者共同构成了一个<strong>“不可能三角”</strong>。</p>
+<p>随着计算机硬件性能增长，在内存占用、吞吐量和延迟这三项指标里，<strong>延迟的重要性日益凸显，越发备受关注</strong>。</p>
+<p>图3-14中浅色阶段表示必须挂起用户线程，深色表示收集器线程与用户线程是并发工作的。由图3-14可见，在CMS和G1之前的全部收集器，其工作的所有步骤都会产生“Stop The World”式的停顿；CMS和G1分别使用<strong>增量更新和原始快照技术</strong>，实现了标记阶段的并发，不会因管理的堆内存变大，要标记的对象变多而导致停顿时间随之增长。但是对于标记阶段之后的处理，仍未得到妥善解决。G1虽然可以按更小的粒度进行回收，从而抑制整理阶段出现时间过长的停顿，但毕竟也还是要暂停的。</p>
+<img src="/2022/04/06/d47b630de3bd/gc-concurrence-statuation.png" class="" title="各款收集器的并发情况">
+<!-- ![image-20220407212127845](第3章 垃圾收集器与内存分配策略.assets/image-20220407212127845.png) -->
+
+<p>最后的两款收集器，<strong>Shenandoah和ZGC</strong>，几乎整个工作过程全部都是并发的，<strong>只有初始标记、最终标记这些阶段有短暂的停顿</strong>，这部分停顿的时间基本上是固定的，与堆的容量、堆中对象的数量没有正比例关系。</p>
+<p>这两款目前仍处于实验状态的收集器，被官方命名为“低延迟垃圾收集器”（Low-Latency Garbage Collector或者Low-Pause-Time Garbage Collector）。 </p>
+<ul>
+<li>Shenandoah不仅要进行并发的垃圾标记，还要并发地进行对象清理后的整理动作。</li>
+<li>比起有着Oracle正朔血统的<strong>ZGC</strong>，<strong>Shenandoah</strong>反而更像是<strong>G1</strong>的下一代继承者，它们两者有着相似的堆内存布局，在初始标记、并发标记等许多阶段的处理思路上都高度一致，甚至还直接共享了一部分实现代码。</li>
+</ul>
+<h4 id="与G1收集器不同之处"><a href="#与G1收集器不同之处" class="headerlink" title="与G1收集器不同之处"></a>与G1收集器不同之处</h4><ul>
+<li><p>G1的回收阶段是可以多线程并行的，但却不能与用户线程并发</p>
+</li>
+<li><p>Shenandoah（目前）是默认<strong>不使用分代收集</strong>的</p>
+</li>
+<li><p>Shenandoah摒弃了在G1中耗费大量内存和计算资源去维护的记忆集，改用名为<strong>“连接矩阵”（Connection Matrix）</strong>的全局数据结构来记录跨Region的引用关系，降低了处理跨代指针时的记忆集维护消耗，也降低了伪共享问题（见<strong>记忆集与卡表</strong>小节）的发生概率。</p>
+<ul>
+<li><strong>连接矩阵</strong>可以简单理解为一张二维表格，如果Region N有对象指向Region M，就在表格的N行M列中打上一个标记。（图数据结构-邻接矩阵？）</li>
+<li>如图3-15所示，如果Region 5中的对象Baz引用了Region 3的Foo，Foo又引用了Region 1的Bar，那连接矩阵中的5行3列、3行1列就应该被打上标记。在回收时通过这张表格就可以得出哪些Region之间产生了跨代引用。</li>
+</ul>
+</li>
+</ul>
+<pre><code>&#123;% asset_img shenandoah-metrix.png Shenandoah收集器的连接矩阵示意图 %&#125;
+</code></pre>
+  <!-- ![image-20220407213913062](第3章 垃圾收集器与内存分配策略.assets/image-20220407213913062.png) -->
+
+
+
+
+
+<h3 id="Shenandoah-收集器"><a href="#Shenandoah-收集器" class="headerlink" title="Shenandoah 收集器"></a>Shenandoah 收集器</h3><p>Shenandoah作为第一款不由Oracle（包括以前的Sun）公司的虚拟机团队所领导开发的HotSpot垃圾收集器，不可避免地会受到一些来自“官方”的排挤。</p>
+<p><strong>Shenandoah是一款只有OpenJDK才会包含</strong></p>
+<p> Shenandoah收集器的工作过程大致可以划分为以下<strong>九个阶段</strong></p>
+<ul>
+<li><p>初始标记（Initial Marking）：**[Stop The World]**，但停顿时间与堆大小无关，只与GC Roots的数量相关。 </p>
+</li>
+<li><p>并发标记（Concurrent Marking）：这个阶段是<strong>与用户线程一起并发</strong>的，时间长短取决于堆中存活对象的数量以及对象图的结构复杂程度。</p>
+</li>
+<li><p>最终标记（Final Marking）：**[Stop The World]<strong>，与G1一样，处理剩余的SATB扫描，并在这个阶段</strong>统计出回收价值** </p>
+<p><strong>最高的Region</strong>，将这些Region构成一组<strong>回收集（Collection Set）</strong>。</p>
+</li>
+<li><p>并发清理（Concurrent Cleanup）：这个阶段用于<strong>清理那些整个区域内连一个存活对象都没有找到的Region</strong>（这类Region被称为<strong>Immediate Garbage Region</strong>）。</p>
+</li>
+<li><p>并发回收（Concurrent Evacuation）：</p>
+<ul>
+<li>并发回收阶段是Shenandoah与之前HotSpot中其他收集器的核心差异。</li>
+<li>在这个阶段，Shenandoah要把回收集里面的存活对象先复制一份到其他未被使用的Region之中。复制对象这件事情如果将用户线程冻结起来再做那是相当简单的，但如果两者必须要同时并发进行的话，就变得复杂起来了。<strong>其困难点是在移动对象的同时，用户线程仍然可能不停对被移动的对象进行读写访问，移动对象是一次性的行为，但移动之后整个内存中所有指向该对象的引用都还是旧对象的地址，这是很难一瞬间全部改变过来的。</strong></li>
+<li>对于并发回收阶段遇到的这些困难，Shenandoah将会通过读屏障和被称为<strong>“Brooks Pointers”的转发指针</strong>来解决，并发回收阶段运行的时间长短取决于<strong>回收集</strong>的大小。 </li>
+</ul>
+</li>
+<li><p>初始引用更新（Initial Update Reference）：**[Stop The World]**</p>
+<ul>
+<li>并发回收阶段复制对象结束后，还需要把堆中所有指向旧对象的引用修正到复制后的新地址，这个操作称为<strong>引用更新</strong>。</li>
+<li>引用更新的初始化阶段实际上<strong>并未做什么具体的处理</strong>，设立这个阶段<strong>只是为了建立一个线程集合点</strong>，确保所有并发回收阶段中进行的收集器线程都已完成分配给它们的对象移动任务而已。</li>
+<li>初始引用更新时间很短，会产生一个非常短暂的停顿。</li>
+</ul>
+</li>
+<li><p>并发引用更新（Concurrent Update Reference）：</p>
+<ul>
+<li>真正开始进行引用更新操作，这个阶段是与用户线程一起并发的，时间长短取决于内存中涉及的引用数量的多少。</li>
+<li>并发引用更新与并发标记不同，它不再需要沿着对象图来搜索，只需要按照内存物理地址的顺序，线性地搜索出引用类型，把旧值改为新值即可。 </li>
+</ul>
+</li>
+<li><p>最终引用更新（Final Update Reference）：**[Stop The World]**</p>
+<ul>
+<li>解决了堆中的引用更新后，还要修正存在于GC Roots中的引用。</li>
+<li>这个阶段是Shenandoah的最后一次停顿，停顿时间只与GC Roots的数量相关。</li>
+</ul>
+</li>
+<li><p>并发清理（Concurrent Cleanup）：</p>
+<ul>
+<li>经过并发回收和引用更新之后，整个回收集中所有的Region已再无存活对象，这些Region都变成Immediate Garbage Regions了，最后再调用一次并发清理过程来回收这些Region的内存空间，供以后新对象分配使用。</li>
+</ul>
+</li>
+</ul>
+<p>只要抓住其中三个最重要的并发阶段（<strong>并发标记</strong>、<strong>并发回收</strong>、<strong>并发引用更新</strong>），就能比较容易理清Shenandoah是如何运作的了。</p>
+<h4 id="Brooks-Pointer"><a href="#Brooks-Pointer" class="headerlink" title="Brooks Pointer"></a>Brooks Pointer</h4><p><strong>Brooks Pointer</strong>。“Brooks”是一个人的名字。1984年，Rodney A.Brooks在论文《Trading Data Space for Reduced Time and Code Space in Real-Time Garbage Collection on Stock Hardware》中提出了使用转发指针（Forwarding Pointer，也常被称为Indirection Pointer）来实现对象移动与用户程序并发的一种解决方案。</p>
+<p>此前，要做类似的并发操作，通常是在被移动对象原有的内存上设置<strong>保护陷阱（Memory Protection Trap）</strong>，<u>一旦用户程序访问到归属于旧对象的内存空间就会产生自陷中段，进入预设好的异常处理器中，再由其中的代码逻辑把访问转发到复制后的新对象上</u>。虽然确实能够实现对象移动与用户线程并发，但是如果没有操作系统层面的直接支持，这种方案将导致用户态频繁切换到核心态，<strong>代价是非常大的，不能频繁使用</strong>。</p>
+<pre><code>&#123;% asset_img brooks-pointers.png Brooks-Pointers示意图（一） %&#125;
+</code></pre>
+<!-- ![image-20220407215713796](第3章 垃圾收集器与内存分配策略.assets/image-20220407215713796.png) -->
+
+<p>Brooks提出的新方案不需要用到内存保护陷阱，而是在原有对象布局结构的最前面统一<strong>增加一个新的引用字段</strong>，在正常不处于并发移动的情况下，该引用指向对象自己，如图3-17所示。 </p>
+<p>从结构上来看，Brooks提出的转发指针与某些早期Java虚拟机使用过的<strong>句柄定位</strong>（关于对象定位详见第2章）有一些相似之处，两者都是一种间接性的对象访问方式，差别是<strong>句柄通常会统一存储在专门的句柄池中</strong>，而<strong>转发指针是分散存放在每一个<u>对象头</u>前面</strong>。 </p>
+<p>注意：</p>
+<ul>
+<li><p>Brooks形式的转发指针在设计上决定了它是必然会出现<strong>多线程竞争问题</strong>的，</p>
+<ul>
+<li><p>如果收集器线程与用户线程发生的只是并发读取，那无论读到旧对象还是新对象上的字段，返回的结果都应该是一样的，这个场景还可以有一些“偷懒”的处理余地；</p>
+</li>
+<li><p>但如果发生的是并发写入，就一定必须保证写操作只能发生在新复制的对象上，而不是写入旧对象的内存中。</p>
+<img src="/2022/04/06/d47b630de3bd/brooks-pointers2.png" class="" title="Brooks-Pointers示意图（二）"></li>
+</ul>
+</li>
+</ul>
+<!-- ![image-20220407220111309](第3章 垃圾收集器与内存分配策略.assets/image-20220407220111309.png) -->
+
+<p>1）收集器线程复制了新的对象副本； </p>
+<p>2）用户线程更新对象的某个字段； </p>
+<p>3）收集器线程更新转发指针的引用值为新副本地址。 </p>
+<p>如果不做任何保护措施，让事件2在事件1、事件3之间发生的话，将导致的结果就是用户线程对对象的变更发生在旧对象上，所以这里<strong>必须针对转发指针的访问操作采取同步措施</strong>，让收集器线程或者用户线程对转发指针的访问只有其中之一能够成功，另外一个必须等待，避免两者交替进行。</p>
+<p>实际上Shenandoah收集器是通过<strong>比较并交换（Compare And Swap，CAS）操作</strong>来保证并发时对象的访问正确性的。</p>
+<p>为了实现<strong>Brooks Pointer</strong>，Shenandoah在<strong>读、写屏障</strong>中都加入了额外的转发处理，尤其是使用读屏障的代价，这是比写屏障更大的。</p>
+<h3 id="ZGC收集器"><a href="#ZGC收集器" class="headerlink" title="ZGC收集器"></a>ZGC收集器</h3><p><strong>ZGC</strong>（“Z”并非什么专业名词的缩写，这款收集器的名字就叫作<strong>Z Garbage Collector</strong>）是一款在<strong>JDK 11</strong>中新加入的具有实验性质的低延迟垃圾收集器，是由Oracle公司研发的。</p>
+<p>ZGC和Shenandoah的目标是高度相似的，都希望在尽可能对吞吐量影响不太大的前提下，实现在任意堆内存大小下都可以把垃圾收集的停顿时间限制在十毫秒以内的低延迟。</p>
+<p>但是ZGC和Shenandoah的实现思路又是差异显著的，如果说RedHat公司开发的Shen-andoah像是Oracle的G1收集器的实际继承者的话，那Oracle公司开发的ZGC就更像是Azul System公司独步天下的PGC（Pauseless GC）和C4（Concurrent Continuously CompactingCollector）收集器的同胞兄弟。 </p>
+<p>与Shenandoah和G1一样，ZGC也采用<strong>基于Region的堆内存布局</strong>，但与它们不同的是，ZGC的Region具有动态性——动态创建和销毁，以及动态的区域容量大小。</p>
+<p>在x64硬件平台下，ZGC的Region可以具有如图3-19所示的大、中、小三类容量： </p>
+<pre><code>&#123;% asset_img ZGC-heap-layout.png ZGC的堆内存布局 %&#125;
+</code></pre>
+<!-- ![image-20220407220841433](第3章 垃圾收集器与内存分配策略.assets/image-20220407220841433.png) -->
+
+<ul>
+<li>小型Region（Small Region）：容量固定为2MB，用于放置小于256KB的小对象。</li>
+<li>中型Region（Medium Region）：容量固定为32MB，用于放置大于等于256KB但小于4MB的对 象。</li>
+<li>大型Region（Large Region）：容量不固定，可以动态变化，但必须为2MB的整数倍，用于放置4MB或以上的大对象。</li>
+</ul>
+<p>ZGC收集器有一个标志性的设计是它采用的<strong>染色指针技术（Colored Pointer</strong>，其他类似的技术中可能将它称为<strong>Tag Pointer</strong>或者<strong>Version Pointer</strong>）。</p>
+<ul>
+<li><p>追踪式收集算法的标记阶段就可能存在只跟指针打交道而不必涉及指针所引用的对象本身的场景。例如对象标记的过程中需要给对象打上三色标记（见<strong>并发的可达性分析</strong>小节），这些标记本质上就只和对象的引用有关，而与对象本身无关——某个对象只有它的引用关系能决定它存活与否，对象上其他所有的属性都不能够影响它的存活判定结果。</p>
+</li>
+<li><p>而<strong>ZGC的染色指针是最直接的、最纯粹的，它直接把标记信息记在引用对象的指针上</strong>，这时，与其说可达性分析是遍历对象图来标记对象，还不如说是遍历“引用图”来标记“引用”了。 </p>
+</li>
+</ul>
+<p><strong>染色指针是一种直接将少量额外的信息存储在指针上的技术，</strong>可是为什么指针本身也可以存储额外信息呢？</p>
+<p>有关染色指针的内容懒得记了。。。反正也搞不懂:upside_down_face:</p>
+<h2 id="3-7-选择合适的垃圾收集器"><a href="#3-7-选择合适的垃圾收集器" class="headerlink" title="3.7 选择合适的垃圾收集器"></a>3.7 选择合适的垃圾收集器</h2><h3 id="3-7-4-垃圾收集器参数总结"><a href="#3-7-4-垃圾收集器参数总结" class="headerlink" title="3.7.4 垃圾收集器参数总结"></a>3.7.4 垃圾收集器参数总结</h3><img src="/2022/04/06/d47b630de3bd/gc-parameter-1.png" class="" title="垃圾收集器参数总结（一）">
+<!-- ![image-20220407221855010](第3章 垃圾收集器与内存分配策略.assets/image-20220407221855010.png) -->
+
+<img src="/2022/04/06/d47b630de3bd/gc-parameter-1.png" class="" title="垃圾收集器参数总结（二）">
+<!-- ![image-20220407221910411](第3章 垃圾收集器与内存分配策略.assets/image-20220407221910411.png) -->
+
+<img src="/2022/04/06/d47b630de3bd/gc-parameter-1.png" class="" title="垃圾收集器参数总结（三）">
+<!-- ![image-20220407221921402](第3章 垃圾收集器与内存分配策略.assets/image-20220407221921402.png) -->
+
+
+
+<h2 id="3-8-实战：内存分配与回收策略"><a href="#3-8-实战：内存分配与回收策略" class="headerlink" title="3.8 实战：内存分配与回收策略"></a>3.8 实战：内存分配与回收策略</h2><hr>
+<h2 id="回收方式"><a href="#回收方式" class="headerlink" title="回收方式"></a>回收方式</h2><h3 id="整堆回收-（Full-GC"><a href="#整堆回收-（Full-GC" class="headerlink" title="整堆回收 （Full GC)"></a>整堆回收 （Full GC)</h3><p>收集整个Java堆和方法区的垃圾收集。 </p>
+<h3 id="局部回收（Partial-GC"><a href="#局部回收（Partial-GC" class="headerlink" title="局部回收（Partial GC)"></a>局部回收（Partial GC)</h3><p>收集整个Java堆和方法区的垃圾收集。 </p>
+<h4 id="Minor-GC-Young-GC-（新生代收集）"><a href="#Minor-GC-Young-GC-（新生代收集）" class="headerlink" title="Minor GC / Young GC （新生代收集）"></a>Minor GC / Young GC （新生代收集）</h4><p>指目标只是新生代的垃圾收集。 </p>
+<h4 id="Major-GC-Old-GC-（老年代收集）"><a href="#Major-GC-Old-GC-（老年代收集）" class="headerlink" title="Major GC / Old GC （老年代收集）"></a>Major GC / Old GC （老年代收集）</h4><p>指目标只是老年代的垃圾收集。目前只有CMS收集器会有单 独收集老年代的行为。</p>
+<h4 id="Mixed-GC（混合收集）"><a href="#Mixed-GC（混合收集）" class="headerlink" title="Mixed GC（混合收集）"></a>Mixed GC（混合收集）</h4><p><strong>指目标是收集整个新生代以及部分老年代的垃圾收集</strong>。目前只有G1收 集器会有这种行为。</p>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">文章作者: </span><span class="post-copyright-info"><a href="https://dstrive06.github.io">dstrive</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">文章链接: </span><span class="post-copyright-info"><a href="https://dstrive06.github.io/blog/d47b630de3bd/">https://dstrive06.github.io/blog/d47b630de3bd/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来自 <a href="https://dstrive06.github.io" target="_blank">dstrive</a>！</span></div></div><div class="tag_share"><div class="post-meta__tag-list"></div><div class="post_share"><div class="social-share" data-image="https://backiee.com/static/wpdb/wallpapers/v2/1000x563/327503.jpg" data-sites="facebook,twitter,wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/gh/overtrue/share.js@master/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><div class="prev-post pull-left"><a href="/blog/3856a2b115d7/"><img class="prev-cover" src="https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg" onerror="onerror=null;src='/img/404.jpg'" alt="cover of previous post"><div class="pagination-info"><div class="label">上一篇</div><div class="prev_info">第6章 类文件结构</div></div></a></div><div class="next-post pull-right"><a href="/blog/7821c879dc5d/"><img class="next-cover" src="/img/Two%20Arms%20Working%20in%20a%20Websites%20Wireframes.jpg" onerror="onerror=null;src='/img/404.jpg'" alt="cover of next post"><div class="pagination-info"><div class="label">下一篇</div><div class="next_info">第二章-Java内存区域与内存溢出异常</div></div></a></div></nav></div><div class="aside-content" id="aside-content"><div class="card-widget card-info"><div class="is-center"><div class="avatar-img"><img src="https://backiee.com/static/wpdb/wallpapers/v2/1000x563/324912.jpg" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="author-info__name">dstrive</div><div class="author-info__description">个人博客，记录笔记</div></div><div class="card-info-data site-data is-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">12</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">2</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">14</div></a></div><a id="card-info-btn" target="_blank" rel="noopener" href="https://github.com/dstrive06"><i class="fab fa-github"></i><span>Follow Me</span></a><div class="card-info-social-icons is-center"><a class="social-icon" href="https://github.com/xxxxx" target="_blank" title="Github"><i class="fab fa-github"></i></a><a class="social-icon" href="mailto:xxxxxx@gmail.com" target="_blank" title="Email"><i class="fas fa-envelope"></i></a></div></div><div class="card-widget card-announcement"><div class="item-headline"><i class="fas fa-bullhorn fa-shake"></i><span>公告</span></div><div class="announcement_content">记录笔记，记录技术点滴，持续学习...</div></div><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content is-expand"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link"><span class="toc-number">1.</span> <span class="toc-text"></span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%8C%87%E4%BB%A4"><span class="toc-number">1.1.</span> <span class="toc-text">指令</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%A6%82%E8%BF%B0"><span class="toc-number">1.2.</span> <span class="toc-text">概述</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AF%B9%E8%B1%A1%E5%B7%B2%E6%AD%BB%EF%BC%9F"><span class="toc-number">1.3.</span> <span class="toc-text">对象已死？</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%BC%95%E7%94%A8%E6%8A%80%E6%9C%AF%E7%AE%97%E6%B3%95"><span class="toc-number">1.3.1.</span> <span class="toc-text">引用技术算法</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%8F%AF%E8%BE%BE%E6%80%A7%E5%88%86%E6%9E%90%E7%AE%97%E6%B3%95"><span class="toc-number">1.3.2.</span> <span class="toc-text">可达性分析算法</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%86%8D%E8%B0%88%E5%BC%95%E7%94%A8"><span class="toc-number">1.3.3.</span> <span class="toc-text">再谈引用</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%BC%BA%E5%BC%95%E7%94%A8"><span class="toc-number">1.3.3.1.</span> <span class="toc-text">强引用</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%BD%AF%E5%BC%95%E7%94%A8"><span class="toc-number">1.3.3.2.</span> <span class="toc-text">软引用</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%BC%B1%E5%BC%95%E7%94%A8"><span class="toc-number">1.3.3.3.</span> <span class="toc-text">弱引用</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%99%9A%E5%BC%95%E7%94%A8"><span class="toc-number">1.3.3.4.</span> <span class="toc-text">虚引用</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%9F%E5%AD%98%E8%BF%98%E6%98%AF%E6%AD%BB%E4%BA%A1%EF%BC%9F"><span class="toc-number">1.3.4.</span> <span class="toc-text">生存还是死亡？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%9B%9E%E6%94%B6%E6%96%B9%E6%B3%95%E5%8C%BA"><span class="toc-number">1.3.5.</span> <span class="toc-text">回收方法区</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9E%83%E5%9C%BE%E5%9B%9E%E6%94%B6%E7%AE%97%E6%B3%95"><span class="toc-number">1.4.</span> <span class="toc-text">垃圾回收算法</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E4%BB%A3%E6%94%B6%E9%9B%86%E7%90%86%E8%AE%BA"><span class="toc-number">1.4.1.</span> <span class="toc-text">分代收集理论</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%97%AE%E9%A2%98%EF%BC%9A"><span class="toc-number">1.4.1.1.</span> <span class="toc-text">问题：</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88%EF%BC%9A"><span class="toc-number">1.4.1.2.</span> <span class="toc-text">解决方案：</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%87%E8%AE%B0-%E6%B8%85%E9%99%A4%E7%AE%97%E6%B3%95"><span class="toc-number">1.4.2.</span> <span class="toc-text">标记-清除算法</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%87%E8%AE%B0-%E5%A4%8D%E5%88%B6%E7%AE%97%E6%B3%95-%EF%BC%88%E6%96%B0%E7%94%9F%E4%BB%A3%E4%BD%BF%E7%94%A8%EF%BC%89"><span class="toc-number">1.4.3.</span> <span class="toc-text">标记-复制算法 （新生代使用）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%A0%87%E8%AE%B0-%E6%95%B4%E7%90%86%E7%AE%97%E6%B3%95-%EF%BC%88%E8%80%81%E5%B9%B4%E4%BB%A3%E4%BD%BF%E7%94%A8%EF%BC%89"><span class="toc-number">1.4.4.</span> <span class="toc-text">标记-整理算法 （老年代使用）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#HotSpot%E7%9A%84%E7%AE%97%E6%B3%95%E7%BB%86%E8%8A%82%E5%AE%9E%E7%8E%B0"><span class="toc-number">1.5.</span> <span class="toc-text">HotSpot的算法细节实现</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%89%E5%85%A8%E7%82%B9%E2%80%94%E2%80%94%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E8%AF%A5GC"><span class="toc-number">1.5.1.</span> <span class="toc-text">安全点——什么时候该GC</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AE%89%E5%85%A8%E5%8C%BA%E5%9F%9F%E2%80%94%E2%80%94%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E8%AF%A5GC"><span class="toc-number">1.5.2.</span> <span class="toc-text">安全区域——什么时候该GC</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%B0%E5%BF%86%E5%8D%A1%E4%B8%8E%E5%8D%A1%E8%A1%A8%E2%80%94%E2%80%94%E8%A7%A3%E5%86%B3%E8%B7%A8%E4%BB%A3%E5%BC%95%E7%94%A8%E9%97%AE%E9%A2%98"><span class="toc-number">1.5.3.</span> <span class="toc-text">记忆卡与卡表——解决跨代引用问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%86%99%E5%B1%8F%E9%9A%9C%E2%80%94%E2%80%94%E4%BF%AE%E6%94%B9%E5%8D%A1%E8%A1%A8%EF%BC%88%E4%BD%BF%E5%8F%98%E8%84%8F%EF%BC%89"><span class="toc-number">1.5.4.</span> <span class="toc-text">写屏障——修改卡表（使变脏）</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8B%93%E5%B1%95%EF%BC%9A"><span class="toc-number">1.5.4.1.</span> <span class="toc-text">拓展：</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%BC%AA%E5%85%B1%E4%BA%AB%E9%97%AE%E9%A2%98"><span class="toc-number">1.5.4.2.</span> <span class="toc-text">伪共享问题</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B9%B6%E8%A1%8C%E7%9A%84%E5%8F%AF%E8%BE%BE%E6%80%A7%E5%88%86%E6%9E%90"><span class="toc-number">1.5.5.</span> <span class="toc-text">并行的可达性分析</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88%EF%BC%9A-1"><span class="toc-number">1.5.5.1.</span> <span class="toc-text">解决方案：</span></a></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%BB%8F%E5%85%B8%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">1.6.</span> <span class="toc-text">经典垃圾收集器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Serial%E6%94%B6%E9%9B%86%E5%99%A8-%E6%96%B0%E7%94%9F%E4%BB%A3"><span class="toc-number">1.6.1.</span> <span class="toc-text">Serial收集器 [新生代]</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ParNew%E6%94%B6%E9%9B%86%E5%99%A8-%E6%96%B0%E7%94%9F%E4%BB%A3"><span class="toc-number">1.6.2.</span> <span class="toc-text">ParNew收集器 [新生代]</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Parallel-Scavenge%E6%94%B6%E9%9B%86%E5%99%A8-%E6%96%B0%E7%94%9F%E4%BB%A3"><span class="toc-number">1.6.3.</span> <span class="toc-text">Parallel Scavenge收集器 [新生代]</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Serial-Old%E6%94%B6%E9%9B%86%E5%99%A8-%E8%80%81%E5%B9%B4%E4%BB%A3"><span class="toc-number">1.6.4.</span> <span class="toc-text">Serial Old收集器  [老年代]</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Parallel-Old%E6%94%B6%E9%9B%86%E5%99%A8-%E8%80%81%E5%B9%B4%E4%BB%A3"><span class="toc-number">1.6.5.</span> <span class="toc-text">Parallel Old收集器 [老年代]</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Concurrent-Mark-Sweep%EF%BC%88CMS%EF%BC%89%E6%94%B6%E9%9B%86%E5%99%A8-%E8%80%81%E5%B9%B4%E4%BB%A3"><span class="toc-number">1.6.6.</span> <span class="toc-text">Concurrent Mark Sweep（CMS）收集器 [老年代]</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Garbage-First%EF%BC%88G1%EF%BC%89%E6%94%B6%E9%9B%86%E5%99%A8-%E5%85%A8%E5%A0%86%EF%BC%8C%E9%87%8C%E7%A8%8B%E7%A2%91"><span class="toc-number">1.6.7.</span> <span class="toc-text">Garbage First（G1）收集器 [全堆，里程碑]</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%8ECMS%E6%94%B6%E9%9B%86%E5%99%A8%E7%9B%B8%E6%AF%94"><span class="toc-number">1.6.7.1.</span> <span class="toc-text">与CMS收集器相比</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A1%A5%E5%85%85"><span class="toc-number">1.6.8.</span> <span class="toc-text">补充</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BD%8E%E5%BB%B6%E8%BF%9F%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">1.7.</span> <span class="toc-text">低延迟垃圾收集器</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%8EG1%E6%94%B6%E9%9B%86%E5%99%A8%E4%B8%8D%E5%90%8C%E4%B9%8B%E5%A4%84"><span class="toc-number">1.7.0.1.</span> <span class="toc-text">与G1收集器不同之处</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Shenandoah-%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">1.7.1.</span> <span class="toc-text">Shenandoah 收集器</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Brooks-Pointer"><span class="toc-number">1.7.1.1.</span> <span class="toc-text">Brooks Pointer</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#ZGC%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">1.7.2.</span> <span class="toc-text">ZGC收集器</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-7-%E9%80%89%E6%8B%A9%E5%90%88%E9%80%82%E7%9A%84%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8"><span class="toc-number">1.8.</span> <span class="toc-text">3.7 选择合适的垃圾收集器</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-7-4-%E5%9E%83%E5%9C%BE%E6%94%B6%E9%9B%86%E5%99%A8%E5%8F%82%E6%95%B0%E6%80%BB%E7%BB%93"><span class="toc-number">1.8.1.</span> <span class="toc-text">3.7.4 垃圾收集器参数总结</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-8-%E5%AE%9E%E6%88%98%EF%BC%9A%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%E4%B8%8E%E5%9B%9E%E6%94%B6%E7%AD%96%E7%95%A5"><span class="toc-number">1.9.</span> <span class="toc-text">3.8 实战：内存分配与回收策略</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9E%E6%94%B6%E6%96%B9%E5%BC%8F"><span class="toc-number">1.10.</span> <span class="toc-text">回收方式</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%95%B4%E5%A0%86%E5%9B%9E%E6%94%B6-%EF%BC%88Full-GC"><span class="toc-number">1.10.1.</span> <span class="toc-text">整堆回收 （Full GC)</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%B1%80%E9%83%A8%E5%9B%9E%E6%94%B6%EF%BC%88Partial-GC"><span class="toc-number">1.10.2.</span> <span class="toc-text">局部回收（Partial GC)</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#Minor-GC-Young-GC-%EF%BC%88%E6%96%B0%E7%94%9F%E4%BB%A3%E6%94%B6%E9%9B%86%EF%BC%89"><span class="toc-number">1.10.2.1.</span> <span class="toc-text">Minor GC &#x2F; Young GC （新生代收集）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Major-GC-Old-GC-%EF%BC%88%E8%80%81%E5%B9%B4%E4%BB%A3%E6%94%B6%E9%9B%86%EF%BC%89"><span class="toc-number">1.10.2.2.</span> <span class="toc-text">Major GC &#x2F; Old GC （老年代收集）</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Mixed-GC%EF%BC%88%E6%B7%B7%E5%90%88%E6%94%B6%E9%9B%86%EF%BC%89"><span class="toc-number">1.10.2.3.</span> <span class="toc-text">Mixed GC（混合收集）</span></a></li></ol></li></ol></li></ol></li></ol></div></div><div class="card-widget card-recent-post"><div class="item-headline"><i class="fas fa-history"></i><span>最新文章</span></div><div class="aside-list"><div class="aside-list-item"><a class="thumbnail" href="/blog/09209b9f0712/" title="Mybatis执行流程"><img src="https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="Mybatis执行流程"/></a><div class="content"><a class="title" href="/blog/09209b9f0712/" title="Mybatis执行流程">Mybatis执行流程</a><time datetime="2022-05-18T13:25:33.000Z" title="发表于 2022-05-18 21:25:33">2022-05-18</time></div></div><div class="aside-list-item"><div class="content"><a class="title" href="/blog/1f7ff14317f9/" title="第13章 线程安全与锁优化">第13章 线程安全与锁优化</a><time datetime="2022-05-18T12:58:12.000Z" title="发表于 2022-05-18 20:58:12">2022-05-18</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/blog/5b9a996050a2/" title="第12章 Java内存模型与线程"><img src="https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="第12章 Java内存模型与线程"/></a><div class="content"><a class="title" href="/blog/5b9a996050a2/" title="第12章 Java内存模型与线程">第12章 Java内存模型与线程</a><time datetime="2022-05-18T12:58:08.000Z" title="发表于 2022-05-18 20:58:08">2022-05-18</time></div></div><div class="aside-list-item"><div class="content"><a class="title" href="/blog/8c72b87b40d9/" title="第11章 后端编译与优化">第11章 后端编译与优化</a><time datetime="2022-05-18T12:57:36.000Z" title="发表于 2022-05-18 20:57:36">2022-05-18</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/blog/1ee8bf0cee08/" title="第10章 前端编译与优化"><img src="https://i.loli.net/2020/05/01/gkihqEjXxJ5UZ1C.jpg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="第10章 前端编译与优化"/></a><div class="content"><a class="title" href="/blog/1ee8bf0cee08/" title="第10章 前端编译与优化">第10章 前端编译与优化</a><time datetime="2022-05-18T00:22:06.000Z" title="发表于 2022-05-18 08:22:06">2022-05-18</time></div></div></div></div></div></div></main><footer id="footer"><div id="footer-wrap"><div class="copyright">&copy;2021 - 2022 By dstrive</div><div class="framework-info"><span>框架 </span><a target="_blank" rel="noopener" href="https://hexo.io">Hexo</a><span class="footer-separator">|</span><span>主题 </span><a target="_blank" rel="noopener" href="https://github.com/jerryc127/hexo-theme-butterfly">Butterfly</a></div><div class="footer_custom_text">hello，welcome to my blog</div></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><button id="darkmode" type="button" title="浅色和深色模式转换"><i class="fas fa-adjust"></i></button><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside_config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><button id="go-up" type="button" title="回到顶部"><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/ui/dist/fancybox.umd.js"></script><div class="js-pjax"></div><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script></div></body></html>
